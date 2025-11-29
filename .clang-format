@@ -1,0 +1,32 @@
+# Minimal .clang-format for embedded C/C++
+
+# Base style to inherit common defaults
+BasedOnStyle: LLVM
+
+# Indentation
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ContinuationIndentWidth: 4
+
+# Pointer alignment
+PointerAlignment: Right  # `PTMapNodeT *ptr` style
+
+# Brace styles
+BreakBeforeBraces: Attach  # K&R / LLVM style
+
+# Control statements
+AllowShortIfStatementsOnASingleLine: true
+AllowShortLoopsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: None
+
+# Column and wrapping
+ColumnLimit: 120
+BreakBeforeBinaryOperators: None
+BinPackParameters: false
+BinPackArguments: false
+
+# Spaces
+SpacesBeforeTrailingComments: 1
+SpaceAfterCStyleCast: false
+SpaceBeforeParens: ControlStatements
