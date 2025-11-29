@@ -66,6 +66,8 @@ else()
     message(STATUS "Unknown compiler, strict warnings skipped")
 endif()
 
+enable_testing()
+
 subdirs(src)
 subdirs(Unity)
 subdirs(tests)
