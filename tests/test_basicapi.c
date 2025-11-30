@@ -49,7 +49,7 @@ static void val_reset(PTMapNodeT *node)
 {
     node->payload = 0;
     for (int i = 0; i < 2; ++i)
-        if (node->_m_child[i]->_m_bpos > node->_m_bpos)
+        if (node->_m_child[i]->bpos > node->bpos)
             val_reset(node->_m_child[i]);
 }
 
@@ -57,7 +57,7 @@ static void val_count(PTMapNodeT *node)
 {
     ++node->payload;
     for (int i = 0; i < 2; ++i)
-        if (node->_m_child[i]->_m_bpos > node->_m_bpos)
+        if (node->_m_child[i]->bpos > node->bpos)
             val_count(node->_m_child[i]);
         else
             ++node->_m_child[i]->payload;
@@ -67,7 +67,7 @@ static void val_check(PTMapNodeT *node)
 {
     TEST_ASSERT_EQUAL(2, node->payload);
     for (int i = 0; i < 2; ++i)
-        if (node->_m_child[i]->_m_bpos > node->_m_bpos)
+        if (node->_m_child[i]->bpos > node->bpos)
             val_check(node->_m_child[i]);
 }
 

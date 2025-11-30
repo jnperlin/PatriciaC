@@ -459,7 +459,7 @@ patricia_fini_ex(
     // the funnel; the bit-position relation will be detroyed on the right subtrees, so
     // we have to set a simple sentinel. The root node is convenient.
     scan = hold;
-    while (scan->_m_child[1]->_m_bpos > scan->_m_bpos) {
+    while (scan->_m_child[1]->bpos > scan->bpos) {
         scan = scan->_m_child[1];
     }
     scan->_m_child[1] = t->_m_root;
@@ -475,7 +475,7 @@ patricia_fini_ex(
     while (t->_m_root != hold) {               // check for sentinel set above
         PTMapNodeT *next = hold->_m_child[0];  // never NULL, subtree intact
         PTMapNodeT *tail = hold->_m_child[1];  // never NULL, but degraded by funnel
-        if (next->_m_bpos <= hold->_m_bpos) {
+        if (next->bpos <= hold->bpos) {
             // left _m_child is an uplink -- continue through the right _m_child next
             next = tail;
         } else {
@@ -485,14 +485,14 @@ patricia_fini_ex(
             // twice, so the whole decomposition is in O(N), even if it might not look
             // like it at first glance.
             scan = next;
-            while (scan->_m_child[1]->_m_bpos > scan->_m_bpos) {
+            while (scan->_m_child[1]->bpos > scan->bpos) {
                 scan = scan->_m_child[1];
             }
             scan->_m_child[1] = tail;
         }
         // Now push node to list of dead nodes, ensuring it will be considered as an
         // uplink node when inspected again during later flattening steps.
-        hold->_m_bpos = 0;         // make sure remaining references are seen as uplink
+        hold->bpos = 0;         // make sure remaining references are seen as uplink
         hold->_m_child[0] = list;  // push to head of the dead-node list
         list = hold;
 
@@ -540,10 +540,10 @@ patricia_lookup(
     // access.
 
     const PTMapNodeT *node = t->_m_root->_m_child[0];
-    unsigned npos, opos = t->_m_root->_m_bpos;
-    while ((npos = node->_m_bpos) > opos) {
+    unsigned npos, opos = t->_m_root->bpos;
+    while ((npos = node->bpos) > opos) {
         opos = npos;
-        node = node->_m_child[patricia_getbit(key, bitlen, node->_m_bpos)];
+        node = node->_m_child[patricia_getbit(key, bitlen, node->bpos)];
     }
     return patricia_equkey(key, bitlen, node->data, node->nbit) ? node : NULL;
 }
@@ -565,13 +565,13 @@ patricia_prefix(
     // candidates on the way down, remembering the last successful match of a key.
 
     const PTMapNodeT *best = NULL, *node = t->_m_root->_m_child[0];
-    unsigned npos, opos = t->_m_root->_m_bpos;
-    while ((npos = node->_m_bpos) > opos) {
+    unsigned npos, opos = t->_m_root->bpos;
+    while ((npos = node->bpos) > opos) {
         if ((node->nbit <= bitlen) && patricia_equkey(key, node->nbit, node->data, node->nbit)) {
             best = node;
         }
         opos = npos;
-        node = node->_m_child[patricia_getbit(key, bitlen, node->_m_bpos)];
+        node = node->_m_child[patricia_getbit(key, bitlen, node->bpos)];
     }
     return patricia_equkey(key, node->nbit, node->data, node->nbit) ? node : best;
 }
@@ -598,9 +598,9 @@ patricia_insert(
     PTMapNodeT *last, *next;
     last = t->_m_root;
     next = t->_m_root->_m_child[0];
-    while (next->_m_bpos > last->_m_bpos) {
+    while (next->bpos > last->bpos) {
         last = next;
-        next = last->_m_child[patricia_getbit(key, bitlen, last->_m_bpos)];
+        next = last->_m_child[patricia_getbit(key, bitlen, last->bpos)];
     }
     // We have to make a trade-off here: If we assume that duplicates are rare, we can
     // simply calculate the 1st diff bitr position (potentially expensiv) and return the
@@ -627,7 +627,7 @@ patricia_insert(
         }
         return node; // existing node
     }
-    node->_m_bpos = bpos;
+    node->bpos = bpos;
     node->payload = payload;
 
     // Find insert parent -- another walk, but this time depth-limited by thenew branch
@@ -635,9 +635,9 @@ patricia_insert(
     bool pdir = false;
     last = t->_m_root;
     next = t->_m_root->_m_child[0];
-    while ((next->_m_bpos > last->_m_bpos) && (next->_m_bpos < bpos)) {
+    while ((next->bpos > last->bpos) && (next->bpos < bpos)) {
         last = next;
-        pdir = patricia_getbit(key, bitlen, last->_m_bpos);
+        pdir = patricia_getbit(key, bitlen, last->bpos);
         next = last->_m_child[pdir];
     }
 
@@ -690,14 +690,14 @@ _pwalk(
         return false;
     }
 
-    while (next->_m_bpos > last->_m_bpos) {
+    while (next->bpos > last->bpos) {
         if (node == next) {
             out->npar = (PTMapNodeT*)last;
         }
         over = last;
         last = next;
         last = next;
-        next = next->_m_child[patricia_getbit(node->data, node->nbit, next->_m_bpos)];
+        next = next->_m_child[patricia_getbit(node->data, node->nbit, next->bpos)];
     }
     out->node = (PTMapNodeT*)next;
     assert((over->_m_child[0] == last) || (over->_m_child[1] == last));
@@ -824,7 +824,7 @@ _evict(
         // re-link 'p' with the children of 'x' and copy the branch position
         p->_m_child[0] = x->_m_child[0];
         p->_m_child[1] = x->_m_child[1];
-        p->_m_bpos = x->_m_bpos;
+        p->bpos = x->bpos;
     }
 
     memset(x, 0, offsetof(PTMapNodeT, data)); // purge node; paranoia rulez!
@@ -884,15 +884,15 @@ fprint_tree(
     if (0 == flags) {
         for (unsigned i = 0; i < level; ++i)
             fputs("    ", ofp);
-        fprintf(ofp, "+--(%p|%zu)--> '%s(%u)'\n", (void*)node, node->payload, node->data, node->_m_bpos);
+        fprintf(ofp, "+--(%p|%zu)--> '%s(%u)'\n", (void*)node, node->payload, node->data, node->bpos);
     } else {
         if (flags & 2)
-            fprint_tree(ofp, node->_m_child[1], (level + 1), (node->_m_child[1]->_m_bpos > node->_m_bpos ? 3 : 0));
+            fprint_tree(ofp, node->_m_child[1], (level + 1), (node->_m_child[1]->bpos > node->bpos ? 3 : 0));
         for (unsigned i = 0; i < level; ++i)
             fputs("    ", ofp);
-        fprintf(ofp, "[%2u, %p] \n", node->_m_bpos, (void *)node);
+        fprintf(ofp, "[%2u, %p] \n", node->bpos, (void *)node);
         if (flags & 1)
-            fprint_tree(ofp, node->_m_child[0], (level + 1), (node->_m_child[0]->_m_bpos > node->_m_bpos ? 3 : 0));
+            fprint_tree(ofp, node->_m_child[0], (level + 1), (node->_m_child[0]->bpos > node->bpos ? 3 : 0));
     }
 }
 
@@ -980,7 +980,7 @@ iter_child(
 {
     if (NULL != node) {
         PTMapNodeT *next = node->_m_child[dir];
-        node = (node->_m_bpos < next->_m_bpos) ? next : NULL;
+        node = (node->bpos < next->bpos) ? next : NULL;
     }
     return node;
 }
@@ -1011,7 +1011,7 @@ iter_parentPop(
         --iter->_m_stkLen;
         iter->_m_stkTop = (iter->_m_stkTop - 1) & (pstkSize - 1);
         next = iter->_m_pstk[iter->_m_stkTop];
-        if (_isParentOf(next, node) && (next->_m_bpos < node->_m_bpos)) {
+        if (_isParentOf(next, node) && (next->bpos < node->bpos)) {
             return next;
         }
     }
@@ -1024,15 +1024,15 @@ iter_parentPop(
 
     // stack exhausted. Walk down the tree and register parents on the way down
     last = iter->_m_root;
-    next = last->_m_child[patricia_getbit(node->data, node->nbit, last->_m_bpos)];
-    while ((next != node) && (next->_m_bpos > last->_m_bpos)) {
+    next = last->_m_child[patricia_getbit(node->data, node->nbit, last->bpos)];
+    while ((next != node) && (next->bpos > last->bpos)) {
         iter_parentPush(iter, last);
         last = next;
-        next = last->_m_child[patricia_getbit(node->data, node->nbit, last->_m_bpos)];
+        next = last->_m_child[patricia_getbit(node->data, node->nbit, last->bpos)];
     }
 
     // We really should have ended at 'node' here, but if we don't, flag failure!
-    if ((next != node) || (next->_m_bpos <= last->_m_bpos)) {
+    if ((next != node) || (next->bpos <= last->bpos)) {
         iter->_m_stkLen = 0;
         return NULL;
     }
@@ -1223,7 +1223,7 @@ _2dot_edges(FILE* ofp, PTMapNodeT const *node)
     PTMapNodeT const *next;
     for (int idx = 0; idx < 2; ++idx) {
         next = node->_m_child[idx];
-        if (next->_m_bpos > node->_m_bpos) {
+        if (next->bpos > node->bpos) {
             fprintf(ofp, "  N%p:s%c -> N%p;\n", (void *)node, "we"[idx], (void *)next);
         } else if (next == node) {
             fprintf(ofp,
@@ -1242,7 +1242,7 @@ node2label(FILE* ofp, const PTMapNodeT* node)
 {
     unsigned char uch;
     const char   *scp;
-    fprintf(ofp, "[%hu]", (unsigned short)node->_m_bpos);
+    fprintf(ofp, "[%hu]", (unsigned short)node->bpos);
     for (scp = node->data; 0 != (uch = *scp); ++scp) {
         if (uch == '"') {
             fputs("\\\"", ofp);

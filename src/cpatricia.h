@@ -33,17 +33,17 @@ typedef struct pt_memfunc_ {
 } PTMemFuncT;
 
 typedef struct pt_map_node_ {
-    struct pt_map_node_ *_m_child[2];///< child[0]=left, child[1]=right
-    uintptr_t            payload;    ///< user-define payload
-    uint16_t             _m_bpos;    ///< branching bit position (Pascal index)
-    uint16_t             nbit;       ///< key length in bits
-    char                 data[1];    ///< piggy-packed key bytes
+    struct pt_map_node_ *_m_child[2];///< @brief child[0]=left, child[1]=right
+    uintptr_t            payload;    ///< @brief user-define payload
+    uint16_t             bpos;       ///< @brief \bold{(RO)} branching bit position (Pascal index)
+    uint16_t             nbit;       ///< @brief \bold{(RO)} key length in bits
+    char                 data[1];    ///< @brief \bold{(RO)} piggy-packed key bytes
 } PTMapNodeT;
 
 typedef struct patricia_map_ {
-    PTMapNodeT          _m_root[1];  ///< root & sentinel
-    const PTMemFuncT   *_m_mfunc;    ///< memory core functions
-    void               *_m_arena;    ///< allocator arena (or NULL)
+    PTMapNodeT          _m_root[1];  ///< @brief root & sentinel
+    const PTMemFuncT   *_m_mfunc;    ///< @brief memory core functions
+    void               *_m_arena;    ///< @brief allocator arena (or NULL)
 } PatriciaMapT;
 
 extern void              patricia_init_ex(PatriciaMapT *t, const PTMemFuncT *fp, void *arena);
@@ -58,9 +58,9 @@ extern bool              patricia_evict(PatriciaMapT *t, PTMapNodeT *node);
 extern bool              patricia_remove(PatriciaMapT *t, const void *key, uint16_t bitlen, uintptr_t *payload_out);
 
 // the next are exported for easy unit testing
-extern bool     patricia_getbit(const void *base, uint16_t bitlen, uint16_t bitidx);
-extern uint16_t patricia_bitdiff(const void *p1, uint16_t l1, const void *p2, uint16_t l2);
-extern bool     patricia_equkey(const void *p1, uint16_t l1, const void *p2, uint16_t l2);
+extern bool              patricia_getbit(const void *base, uint16_t bitlen, uint16_t bitidx);
+extern uint16_t          patricia_bitdiff(const void *p1, uint16_t l1, const void *p2, uint16_t l2);
+extern bool              patricia_equkey(const void *p1, uint16_t l1, const void *p2, uint16_t l2);
 
 // iteration can be fun...
 typedef enum {
@@ -70,15 +70,15 @@ typedef enum {
 } EPTIterMode;
 
 typedef struct {
-    PatriciaMapT       *_m_tree;    // tree to use in some places
-    const PTMapNodeT   *_m_root;    // root node for iteration, can be subtree 
-    const PTMapNodeT   *_m_nodep;   // node to pick up un next step
-    const PTMapNodeT   *_m_pstk[8]; // bounded parent FIFO stack, should be 4/8/16
-    uint8_t             _m_stkLen;  // number of nodes in stack
-    uint8_t             _m_stkTop;  // current top index of stack, round robin fifo!
-    uint8_t             _m_state;   // state / way node was entered
-    uint8_t             _m_mode;    // pre/in/post order mode flag
-    bool                _m_dir;     // direction, true is laft-to-right
+    PatriciaMapT       *_m_tree;    ///< @brief tree to use in some places
+    const PTMapNodeT   *_m_root;    ///< @brief root node for iteration, can be subtree 
+    const PTMapNodeT   *_m_nodep;   ///< @brief node to pick up un next step
+    const PTMapNodeT   *_m_pstk[8]; ///< @brief bounded parent FIFO stack, should be 4/8/16
+    uint8_t             _m_stkLen;  ///< @brief number of nodes in stack
+    uint8_t             _m_stkTop;  ///< @brief current top index of stack, round robin fifo!
+    uint8_t             _m_state;   ///< @brief state / way node was entered
+    uint8_t             _m_mode;    ///< @brief pre/in/post order mode flag
+    bool                _m_dir;     ///< @brief direction, true is laft-to-right
 } PTMapIterT;
 
 extern void              ptiter_init(PTMapIterT *i, PatriciaMapT *t, const PTMapNodeT *root, bool dir, EPTIterMode mode);

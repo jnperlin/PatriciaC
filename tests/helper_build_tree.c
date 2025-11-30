@@ -81,7 +81,7 @@ void nv_push(NodeVecT *v, const PTMapNodeT *n) {
 /* helper to detect a real downlink */
 static const PTMapNodeT *downchild(const PTMapNodeT *p, int dir) {
     const PTMapNodeT *c = p->_m_child[dir];
-    if (c->_m_bpos > p->_m_bpos) return c;
+    if (c->bpos > p->bpos) return c;
     return NULL;
 }
 
