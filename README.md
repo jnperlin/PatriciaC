@@ -44,7 +44,7 @@ The entire library is published under **CC0**, effectively placing it into the p
 ## Building
 
 A CMake-based build system is provided primarily for unit testing and CI.  
-To build with GCC/Clang/MSVC:
+ To build with GCC/Clang/MSVC:
 
 ```sh
 cmake -B build
@@ -72,13 +72,13 @@ The library is a single logical module. Typical usage is to include the header a
 #include "patricia.h"
 
 PatriciaMapT map;
-ptinit(&map, NULL, NULL);
+patricia_init(&map);
 
-ptinsert(&map, "test", 4, my_payload_ptr);
-void *p = ptlookup(&map, "test", 4);
+patricia_insert(&map, "test", 32, my_payload_ptr, NULL); // BITS, not bytes!
+void *p = patricia_lookup(&map, "test", 32);
 
-ptdelete(&map, "test", 4);
-ptclear(&map);
+patricia_remove(&map, "test", 32);
+patricia_fini(&map);
 ```
 
 ### Node Layout
@@ -93,7 +93,10 @@ typedef struct pt_map_node_ {
 } PTMapNodeT;
 ```
 
-Keys are stored in `data[]` with `nbit` bits.  
+Keys are stored in `data[]` with `nbit` bits.  An additional NUL byte is added to make string handling
+more robust, but it is *not* accounted for in the bit length.  (Including the NUL byte in the key would
+make prefix matching for strings impossible!)
+
 Bit numbering: MSB of data[0] = bit 1.
 
 ---
@@ -104,7 +107,8 @@ The iterator supports in-order, pre-order, and post-order traversal, forward or 
 
 ```c
 PTMapIterT it;
-ptiter_init(&it, &map, map._m_root, true, ePTMode_inOrder);
+// iterate all nodes left-to-right, in-order
+ptiter_init(&it, &map, NULL, true, ePTMode_inOrder);
 
 const PTMapNodeT *n;
 while ((n = ptiter_next(&it)) != NULL) {
@@ -112,10 +116,10 @@ while ((n = ptiter_next(&it)) != NULL) {
 }
 ```
 
-For reverse iteration:
+For reverse (right-to-left) iteration:
 
 ```c
-ptiter_init(&it, &map, map._m_root, false, ePTMode_inOrder);
+ptiter_init(&it, &map, NULL, false, ePTMode_inOrder);
 
 const PTMapNodeT *n;
 while ((n = ptiter_next(&it)) != NULL) {
@@ -126,7 +130,7 @@ while ((n = ptiter_next(&it)) != NULL) {
 For stepping back:
 
 ```c
-ptiter_init(&it, &map, map._m_root, true, ePTMode_inOrder);
+ptiter_init(&it, &map, NULL, true, ePTMode_inOrder);
 // ... do some steps forward here
 const PTMapNodeT *n;
 while ((n = ptiter_prev(&it)) != NULL) {

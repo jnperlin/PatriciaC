@@ -15,6 +15,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
+#include <stdint.h>
+
+uint16_t
+str2bits(const char *s)
+{
+    return s ? (strnlen(s, (UINT16_MAX / CHAR_BIT)) * CHAR_BIT) : 0;
+}
 
 /* -------- bit helpers ---------------------------------------------------- */
 

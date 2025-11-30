@@ -15,11 +15,6 @@
 #include <limits.h>
 #include <stdint.h>
 
-static uint16_t
-str2bits(const char *s)
-{
-    return s ? (strnlen(s, (UINT16_MAX / CHAR_BIT)) * CHAR_BIT) : 0;
-}
 
 static PatriciaMapT map;
 

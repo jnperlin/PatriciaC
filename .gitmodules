@@ -1,3 +1,6 @@
 [submodule "Unity"]
 	path = Unity
 	url = https://github.com/ThrowTheSwitch/Unity.git
+[submodule "GoogleBench"]
+	path = GoogleBench
+	url = https://github.com/google/benchmark

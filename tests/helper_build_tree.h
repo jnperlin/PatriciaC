@@ -30,6 +30,8 @@
 extern "C" {
 #endif
 
+uint16_t str2bits(const char *s);
+
 int test_getbit(const void *base, uint16_t bitlen, uint16_t bitidx);
 int test_getbit_ext_lastflip(const void *base, uint16_t bitlen, uint16_t bitidx);
 

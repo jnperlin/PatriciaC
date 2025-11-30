@@ -20,6 +20,11 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 typedef struct pt_memfunc_ {
     void *(*fp_alloc)(void *arena, size_t bytes); ///< @brief mandatory node allocator
@@ -81,9 +86,11 @@ extern const PTMapNodeT *ptiter_next(PTMapIterT *i);
 extern const PTMapNodeT *ptiter_prev(PTMapIterT *i);
 extern void              ptiter_reset(PTMapIterT *i);
 
-#include <stdio.h>
-
 extern void patricia_print(FILE *ofp, PatriciaMapT const *tree);
 extern bool patricia_todot(FILE *ofp, PatriciaMapT const *tree, bool (*label)(FILE *, const PTMapNodeT *));
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* CPATRICIA_A86A7C45_B842_401F_B245_319CB49D9C79 */
