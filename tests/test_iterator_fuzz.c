@@ -9,7 +9,7 @@
 // -------------------------------------------------------------------------------------
 // Credits to ChatGPT for doing the gritty details
 // -------------------------------------------------------------------------------------
-#include "cpatricia.h"
+#include "cpatricia_map.h"
 #include "helper_build_tree.h"
 #include "unity.h"
 #include <stdio.h>
@@ -28,7 +28,7 @@ static void do_one_fuzz_run(unsigned seed, unsigned nkeys) {
     TEST_ASSERT_TRUE(ok);
 
     /* collect reference using real ref_postorder/inorder/preorder on root */
-    const PTMapNodeT *root = m._m_root->_m_child[0];
+    const PTMapNodeT *root = s2m(m.tree._m_root->_m_child[0]);
     NodeVecT pre, in, post;
     nv_init(&pre);
     nv_init(&in);

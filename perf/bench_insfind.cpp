@@ -1,5 +1,5 @@
 // ===================== bench_insert_lookup.cpp =====================
-#include "cpatricia.h" // Adjust include path to your project structure
+#include "cpatricia_map.h" // Adjust include path to your project structure
 #include <benchmark/benchmark.h>
 #include <cstring>
 #include <random>
@@ -36,7 +36,7 @@ static void BM_Patricia_Insert(benchmark::State &state) {
         patricia_init(&tree);
 
         for (auto &s : keys) {
-            patricia_insert(&tree, s.c_str(), s.length()*CHAR_BIT, 0, nullptr);
+            patricia_insert(&tree, s.c_str(), s.length()*CHAR_BIT, nullptr);
         }
 
         patricia_fini(&tree);
@@ -58,7 +58,7 @@ static void BM_Patricia_Lookup(benchmark::State &state) {
     patricia_init(&tree);
 
     for (auto &s : keys) {
-        patricia_insert(&tree, s.c_str(), s.length() * CHAR_BIT, 0, nullptr);
+        patricia_insert(&tree, s.c_str(), s.length() * CHAR_BIT, nullptr);
     }
 
     for (auto _ : state) {

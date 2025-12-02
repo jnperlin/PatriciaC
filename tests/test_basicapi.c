@@ -7,7 +7,7 @@
 //    visit https://creativecommons.org/publicdomain/zero/1.0/
 //
 // -------------------------------------------------------------------------------------
-#include "cpatricia.h"
+#include "cpatricia_set.h"
 #include "helper_build_tree.h"
 #include "unity.h"
 #include <stdlib.h>
@@ -16,15 +16,15 @@
 #include <stdint.h>
 
 
-static PatriciaMapT map;
+static PatriciaSetT map;
 
 void setUp(void)
 {
-    patricia_init(&map);
+    patriset_init(&map);
 }
 void tearDown(void)
 {
-    patricia_fini(&map);
+    patriset_fini(&map);
 }
 
 static const char *const names[] = {
@@ -45,37 +45,37 @@ static const char *const names[] = {
      NULL
 };
 
-static void val_reset(PTMapNodeT *node)
+static void val_reset(PTSetNodeT *node)
 {
-    node->payload = 0;
+    node->lcount = 0;
     for (int i = 0; i < 2; ++i)
         if (node->_m_child[i]->bpos > node->bpos)
             val_reset(node->_m_child[i]);
 }
 
-static void val_count(PTMapNodeT *node)
+static void val_count(PTSetNodeT *node)
 {
-    ++node->payload;
+    ++node->lcount;
     for (int i = 0; i < 2; ++i)
         if (node->_m_child[i]->bpos > node->bpos)
             val_count(node->_m_child[i]);
         else
-            ++node->_m_child[i]->payload;
+            ++node->_m_child[i]->lcount;
 }
 
-static void val_check(PTMapNodeT *node)
+static void val_check(PTSetNodeT *node)
 {
-    TEST_ASSERT_EQUAL(2, node->payload);
+    TEST_ASSERT_EQUAL(2, node->lcount);
     for (int i = 0; i < 2; ++i)
         if (node->_m_child[i]->bpos > node->bpos)
             val_check(node->_m_child[i]);
 }
 
-static void validate(PTMapNodeT *node)
+static void validate(PTSetNodeT *node)
 {
     val_reset(node);
     val_count(node);
-    node->payload -= 1; // We entered the root from the outside -- remove 1 ref!
+    node->lcount -= 1; // We entered the root from the outside -- remove 1 ref!
     val_check(node);
 }
 
@@ -85,14 +85,14 @@ static void test_insert(void)
     bool     ins;
 
     for (idx = 0; names[idx]; ++idx) {
-        const PTMapNodeT *np = patricia_insert(&map, names[idx], str2bits(names[idx]), idx, &ins);
+        const PTSetNodeT *np = patriset_insert(&map, names[idx], str2bits(names[idx]), &ins);
         TEST_ASSERT_NOT_NULL(np);
         TEST_ASSERT_TRUE(ins);
     }
     validate(map._m_root);
 
     for (idx = 0; names[idx]; ++idx) {
-        const PTMapNodeT *np = patricia_insert(&map, names[idx], str2bits(names[idx]), idx, &ins);
+        const PTSetNodeT *np = patriset_insert(&map, names[idx], str2bits(names[idx]), &ins);
         TEST_ASSERT_NOT_NULL(np);
         TEST_ASSERT_FALSE(ins);
         TEST_ASSERT_EQUAL_STRING(names[idx], np->data);
@@ -103,22 +103,22 @@ static void test_lookup(void)
 {
     unsigned idx;
     bool ins;
-    const PTMapNodeT *np;
+    const PTSetNodeT *np;
     char buf[64];
 
     for (idx = 0; names[idx]; ++idx) {
-        (void)patricia_insert(&map, names[idx], str2bits(names[idx]), idx, &ins);
+        (void)patriset_insert(&map, names[idx], str2bits(names[idx]), &ins);
     }
     validate(map._m_root);
 
     for (idx = 0; names[idx]; ++idx) {
-        np = patricia_lookup(&map, names[idx], str2bits(names[idx]));
+        np = patriset_lookup(&map, names[idx], str2bits(names[idx]));
         TEST_ASSERT_NOT_NULL(np);
         TEST_ASSERT_EQUAL_STRING(names[idx], np->data);
     }
     for (idx = 0; names[idx]; ++idx) {
         snprintf(buf, sizeof(buf), "%sXX", names[idx]);
-        TEST_ASSERT_NULL(patricia_lookup(&map, buf, str2bits(buf)));
+        TEST_ASSERT_NULL(patriset_lookup(&map, buf, str2bits(buf)));
     }
 }
 
@@ -126,17 +126,17 @@ static void test_prefix(void)
 {
     unsigned idx;
     bool ins;
-    const PTMapNodeT *np;
+    const PTSetNodeT *np;
     char buf[64];
 
     for (idx = 0; names[idx]; ++idx) {
-        (void)patricia_insert(&map, names[idx], str2bits(names[idx]), idx, &ins);
+        (void)patriset_insert(&map, names[idx], str2bits(names[idx]), &ins);
     }
     validate(map._m_root);
 
     for (idx = 0; names[idx]; ++idx) {
         snprintf(buf, sizeof(buf), "%sXX", names[idx]);
-        np = patricia_prefix(&map, buf, str2bits(buf));
+        np = patriset_prefix(&map, buf, str2bits(buf));
         TEST_ASSERT_NOT_NULL(np);
         TEST_ASSERT_EQUAL_STRING(names[idx], np->data);
     }
@@ -148,16 +148,16 @@ static void test_delete(void)
     bool ins;
 
     for (idx = 0; names[idx]; ++idx) {
-        (void)patricia_insert(&map, names[idx], str2bits(names[idx]), idx, &ins);
+        (void)patriset_insert(&map, names[idx], str2bits(names[idx]),&ins);
     }
     validate(map._m_root);
 
     for (idx = 0; names[idx]; ++idx) {
-        TEST_ASSERT_TRUE(patricia_remove(&map, names[idx], str2bits(names[idx]), NULL));
+        TEST_ASSERT_TRUE(patriset_remove(&map, names[idx], str2bits(names[idx])));
         validate(map._m_root);
-        TEST_ASSERT_NULL(patricia_lookup(&map, names[idx], str2bits(names[idx])));
+        TEST_ASSERT_NULL(patriset_lookup(&map, names[idx], str2bits(names[idx])));
         for (int jdx = idx + 1; names[jdx]; ++jdx) {
-            TEST_ASSERT_NOT_NULL(patricia_lookup(&map, names[jdx], str2bits(names[jdx])));
+            TEST_ASSERT_NOT_NULL(patriset_lookup(&map, names[jdx], str2bits(names[jdx])));
         }
     }
 }
@@ -169,13 +169,13 @@ static void test_dotgen(void)
     FILE *ofp;
 
     for (idx = 0; names[idx]; ++idx) {
-        (void)patricia_insert(&map, names[idx], str2bits(names[idx]), idx, &ins);
+        (void)patriset_insert(&map, names[idx], str2bits(names[idx]), &ins);
     }
     validate(map._m_root);
 
     ofp = fopen("tree.dot", "w");
     TEST_ASSERT_NOT_NULL(ofp);
-    patricia_todot(ofp, &map, NULL);
+    patriset_todot(ofp, &map, NULL);
     fclose(ofp);
 }
 

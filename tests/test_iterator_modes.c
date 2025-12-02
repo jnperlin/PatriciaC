@@ -9,7 +9,7 @@
 // -------------------------------------------------------------------------------------
 // Credits to ChatGPT for doing the gritty details
 // -------------------------------------------------------------------------------------
-#include "cpatricia.h"
+#include "cpatricia_map.h"
 #include "helper_build_tree.h"
 #include "unity.h"
 #include <string.h>
@@ -26,7 +26,7 @@ static void test_all_orders_for_map(PatriciaMapT *m) {
     nv_init(&in);
     nv_init(&post);
 
-    const PTMapNodeT *root = m->_m_root->_m_child[0];
+    const PTMapNodeT *root = s2m(m->tree._m_root->_m_child[0]);
     ref_preorder(root, &pre);
     ref_inorder(root, &in);
     ref_postorder(root, &post);

@@ -23,15 +23,22 @@ endif()
 
 # compile the object-under-test and the helpers into a small lib
 # -------------------------------------------------------------------------------------
-add_library(testutils STATIC helper_build_tree.c ${CMAKE_SOURCE_DIR}/src/cpatricia.c)
+add_library(testutils STATIC
+    helper_build_tree.c
+    ${CMAKE_SOURCE_DIR}/src/cpatricia_set.c
+    ${CMAKE_SOURCE_DIR}/src/cpatricia_map.c
+)
 target_compile_options(testutils PRIVATE ${TEST_EXTRA_CFLAGS})
+target_compile_definitions(testutils PRIVATE PATRICIA_TEST_LINKCNT)
 
 # now create the test prgrams according to "schema F"
 # -------------------------------------------------------------------------------------
-foreach(t IN ITEMS test_basicapi test_iterator_basic test_iterator_modes test_iterator_fuzz)
+foreach(t IN ITEMS test_bitops test_basicapi test_iterator_basic
+                   test_iterator_modes test_iterator_fuzz)
     add_executable(${t} ${t}.c)
     target_link_libraries(${t} PRIVATE testutils unity)
     target_compile_options(${t} PRIVATE ${TEST_EXTRA_CFLAGS})
+    target_compile_definitions(${t} PRIVATE PATRICIA_TEST_LINKCNT)
     target_link_options(${t} PRIVATE ${TEST_EXTRA_LFLAGS})
     add_test(NAME ${t} COMMAND ${t})
 endforeach()

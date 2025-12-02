@@ -45,7 +45,7 @@
 //  - full synthetic root sentinel
 // -------------------------------------------------------------------------------------
 
-#include "cpatricia.h"
+#include "cpatricia_set.h"
 
 #include <string.h>
 #include <stddef.h>
@@ -57,15 +57,15 @@
 // ==== tree topology relation helpers                                              ====
 // -------------------------------------------------------------------------------------
 
-static inline bool _isParentOf(const PTMapNodeT *const p, const PTMapNodeT *const x) {
+static inline bool _isParentOf(const PTSetNodeT *const p, const PTSetNodeT *const x) {
     return (p->_m_child[0] == x) | (p->_m_child[1] == x); // bitwise OR is intention
 }
 
-static inline unsigned _otherIdx(const PTMapNodeT *const p, const PTMapNodeT *const x) {
+static inline unsigned _otherIdx(const PTSetNodeT *const p, const PTSetNodeT *const x) {
     return p->_m_child[0] == x;
 }
 
-static inline unsigned _childIdx(const PTMapNodeT *const p, const PTMapNodeT *const x) {
+static inline unsigned _childIdx(const PTSetNodeT *const p, const PTSetNodeT *const x) {
     return p->_m_child[1] == x;
 }
 
@@ -97,9 +97,9 @@ free_wrap(
 
 // -------------------------------------------------------------------------------------
 // Create a node from a bit string, using the raw memory functions provided
-static PTMapNodeT*
+static PTSetNodeT*
 ptnode_create(
-    const PatriciaMapT *tree,
+    const PatriciaSetT *tree  ,
     const void         *keystr,
     uint16_t            bitlen)
 {
@@ -109,10 +109,10 @@ ptnode_create(
     // Makes printing much safer, at moderate costs.
 
     unsigned    bytelen = ((unsigned)bitlen + CHAR_BIT - 1) / CHAR_BIT;
-    size_t      nodelen = offsetof(PTMapNodeT, data) + bytelen + 1; // reserve one extra NUL byte
-    PTMapNodeT *nodeptr = tree->_m_mfunc->fp_alloc(tree->_m_arena, nodelen);
+    size_t      nodelen = offsetof(PTSetNodeT, data) + bytelen + 1; // reserve one extra NUL byte
+    PTSetNodeT *nodeptr = tree->_m_mfunc->fp_alloc(tree->_m_arena, nodelen);
     if (NULL != nodeptr) {
-        memset(nodeptr, 0, offsetof(PTMapNodeT, data));
+        memset(nodeptr, 0, offsetof(PTSetNodeT, data));
         nodeptr->nbit = bitlen;
         memcpy(nodeptr->data, keystr, bytelen);
         nodeptr->data[bytelen] = '\0';  // ASCIIZ sentinel
@@ -128,28 +128,16 @@ ptnode_create(
 // default...)
 static void
 ptnode_free(
-    const PatriciaMapT *tree,
-    PTMapNodeT         *node)
+    const PatriciaSetT *tree,
+    PTSetNodeT         *node)
 {
     if (NULL != node) {
-        memset(node, 0xFE, offsetof(PTMapNodeT, data));
+        memset(node, 0xFE, offsetof(PTSetNodeT, data));
         node->data[0] = '\0';
         if (NULL != tree->_m_mfunc->fp_free) {
             tree->_m_mfunc->fp_free(tree->_m_arena, node);
         }
     }
-}
-
-// -------------------------------------------------------------------------------------
-// null-deleter to do just nothing with the given uintptr_t. internal use only.
-static void
-dummy_deleter(
-    uintptr_t data,
-    void     *uarg)
-{
-    // a NOP delete callback
-    (void)data;
-    (void)uarg;
 }
 
 // -------------------------------------------------------------------------------------
@@ -186,7 +174,7 @@ bswapz(
 // Count leading zeros in a 'size_t' value. Resorts to builtins where practicable, uses
 // a semi-dumb loop as fallback.
 static unsigned
-patricia_clz(
+patriset_clz(
     size_t v)
 {
     if (0 == v) {
@@ -307,7 +295,7 @@ patricia_getbit(
 /// that the key strings extend logically ad infintum with the complement of the
 /// last bit in the key, matching the bit extractor logic.
 ///
-/// Of course this could be written in terms of @c patricia_getbit() but that would
+/// Of course this could be written in terms of @c patriset_getbit() but that would
 /// be a real performance killer.  This function uses a streaming approach to handel
 /// batches of bits efficiently.
 /// @param p1 memory base of 1st key
@@ -342,7 +330,7 @@ patricia_bitdiff(
             if (endian.c[0] == 1) {                         // little endian target?
                 accu = bswapz(accu);                        // swap bytes in pattern
             }
-            return (uint16_t)(bpos + patricia_clz(accu));   // use quick bit counting
+            return (uint16_t)(bpos + patriset_clz(accu));   // use quick bit counting
         }
         bpos += limb_bits;                                  // prepare for next limb
     }
@@ -399,60 +387,53 @@ patricia_equkey(
 
 // -------------------------------------------------------------------------------------
 /// @brief set up a PATRICIA tree with the given memory management scheme
-/// @param t        tree to initialise
+/// @param tree     tree to initialise
 /// @param fp       function pointer block with memory policy functions
 /// @param arena    additional data for policy functions
 void
-patricia_init_ex(
-    PatriciaMapT     *t,
-    const PTMemFuncT *fp,
+patriset_init_ex(
+    PatriciaSetT     *tree ,
+    const PTMemFuncT *fp   ,
     void             *arena)
+{
+    memset(tree, 0, sizeof(*tree));
+    tree->_m_mfunc = fp;
+    tree->_m_arena = arena;
+    tree->_m_root->_m_child[0] = tree->_m_root->_m_child[1] = tree->_m_root;
+}
+
+// -------------------------------------------------------------------------------------
+/// @brief set up a PATRICIA tree with default memory functions
+/// @param tree     tree to initialise
+void
+patriset_init(
+    PatriciaSetT *tree)
 {
     static const PTMemFuncT mf_memfunc = {
         alloc_wrap,
         free_wrap,
         NULL
     };
-
-    memset(t, 0, sizeof(*t));
-    if (NULL != fp) {
-        t->_m_mfunc = fp;
-        t->_m_arena = arena;
-    } else {
-        t->_m_mfunc = &mf_memfunc;
-        t->_m_arena = NULL;
-    }
-    t->_m_root->_m_child[0] = t->_m_root->_m_child[1] = t->_m_root;
-}
-
-// -------------------------------------------------------------------------------------
-/// @brief set up a PATRICIA tree with default memory functions
-/// @param t        tree to initialise
-void
-patricia_init(
-    PatriciaMapT* t)
-{
-    patricia_init_ex(t, NULL, NULL);
+    memset(tree, 0, sizeof(*tree));
+    tree->_m_mfunc = &mf_memfunc;
+    tree->_m_arena = NULL;
+    tree->_m_root->_m_child[0] = tree->_m_root->_m_child[1] = tree->_m_root;
 }
 
 // -------------------------------------------------------------------------------------
 /// @brief finalize a PATRICIA tree
-/// Destroy all nodes in the tree, with a callback for each payload
+/// Destroy all nodes in the tree
 ///
-/// @param t        tree where all nodes should be flushed
-/// @param deleter  per-payload callback
-/// @param uarg     additional user-owned context data for callback
+/// @param tree     tree where all nodes should be flushed
 void
-patricia_fini_ex(
-    PatriciaMapT *t,
-    void (*deleter)(uintptr_t, void*),
-    void *uarg)
+patriset_fini(
+    PatriciaSetT *tree)
 {
     // Cut tree from root node AASAP
-    PTMapNodeT *scan, *list = NULL;
-    PTMapNodeT *hold = t->_m_root->_m_child[0];
+    PTSetNodeT *scan, *list = NULL;
+    PTSetNodeT *hold = tree->_m_root->_m_child[0];
 
-    t->_m_root->_m_child[0] = t->_m_root->_m_child[1] = t->_m_root;
+    tree->_m_root->_m_child[0] = tree->_m_root->_m_child[1] = tree->_m_root;
 
     // -- force the rightmost leaf to ROOT ---------------------------------------------
     // This is needed ONCE to ensure we have an unambigeous termination condition for
@@ -462,7 +443,7 @@ patricia_fini_ex(
     while (scan->_m_child[1]->bpos > scan->bpos) {
         scan = scan->_m_child[1];
     }
-    scan->_m_child[1] = t->_m_root;
+    scan->_m_child[1] = tree->_m_root;
 
     // -- flatten the tree to a list ---------------------------------------------------
     // Squeezing the tree through a funnel to create a single-linked list of nodes is
@@ -472,9 +453,9 @@ patricia_fini_ex(
     // immediately, or we would end with dangling uplink pointers. Instead we collect
     // the funnelled nodes on a list after setting their branch position to zero.
 
-    while (t->_m_root != hold) {               // check for sentinel set above
-        PTMapNodeT *next = hold->_m_child[0];  // never NULL, subtree intact
-        PTMapNodeT *tail = hold->_m_child[1];  // never NULL, but degraded by funnel
+    while (tree->_m_root != hold) {               // check for sentinel set above
+        PTSetNodeT *next = hold->_m_child[0];  // never NULL, subtree intact
+        PTSetNodeT *tail = hold->_m_child[1];  // never NULL, but degraded by funnel
         if (next->bpos <= hold->bpos) {
             // left _m_child is an uplink -- continue through the right _m_child next
             next = tail;
@@ -502,45 +483,32 @@ patricia_fini_ex(
 
     // -- finally freeing the nodes from the list --------------------------------------
     while (NULL != (hold = list)) {
-        list = hold->_m_child[0];                      // pop head from list
-        (*deleter)(hold->payload, uarg);
-        memset(hold, 0, offsetof(PTMapNodeT, data)); // purge node; paranoia rulez!
-        ptnode_free(t, hold);
+        list = hold->_m_child[0];                       // pop head from list
+        memset(hold, 0, offsetof(PTSetNodeT, data));    // purge node; paranoia rulez!
+        ptnode_free(tree, hold);
     }
-    if (NULL != t->_m_mfunc->fp_kill) {
-        (*t->_m_mfunc->fp_kill)(t->_m_arena);
+    if (NULL != tree->_m_mfunc->fp_kill) {
+        (*tree->_m_mfunc->fp_kill)(tree->_m_arena);
     }
-}
-
-// -------------------------------------------------------------------------------------
-/// @brief finalize a PATRICIA tree
-/// Destroy all nodes in the tree, without doing anything special to manage the payload
-///
-/// @param t        tree where all nodes should be flushed
-void
-patricia_fini(
-    PatriciaMapT *t)
-{
-    patricia_fini_ex(t, dummy_deleter, NULL);
 }
 
 // -------------------------------------------------------------------------------------
 /// @brief  lookup (exact match) for a key in the patricia tree
-/// @param t        tree to search
+/// @param tree     tree to search
 /// @param key      storage of key bits
 /// @param bitlen   number of key bits
 /// @return         node with exact matcing key or @c NULL
-const PTMapNodeT *
-patricia_lookup(
-    const PatriciaMapT *t,
-    const void *key,
-    uint16_t bitlen)
+const PTSetNodeT *
+patriset_lookup(
+    const PatriciaSetT *tree,
+    const void         *key ,
+    uint16_t          bitlen)
 {
     // This is not-quite-from-the-textbook implementation that tries to minimise pointer
     // access.
 
-    const PTMapNodeT *node = t->_m_root->_m_child[0];
-    unsigned npos, opos = t->_m_root->bpos;
+    const PTSetNodeT *node = tree->_m_root->_m_child[0];
+    unsigned npos, opos = tree->_m_root->bpos;
     while ((npos = node->bpos) > opos) {
         opos = npos;
         node = node->_m_child[patricia_getbit(key, bitlen, node->bpos)];
@@ -550,22 +518,22 @@ patricia_lookup(
 
 // -------------------------------------------------------------------------------------
 /// @brief longest prefix match for a key in the patricia tree
-/// @param t        tree to search
+/// @param tree     tree to search
 /// @param key      storage of key bits
 /// @param bitlen   number of key bits
 /// @return         node with non-empty longest prefix key or @c NULL
-const PTMapNodeT *
-patricia_prefix(
-    const PatriciaMapT *t,
-    const void *key,
-    uint16_t bitlen)
+const PTSetNodeT *
+patriset_prefix(
+    const PatriciaSetT *tree,
+    const void         *key ,
+    uint16_t          bitlen)
 {
     // This is not-quite-from-the-textbook implementation that tries to minimise pointer
     // access. It is also a forward-scan processing algorithm that tries to find
     // candidates on the way down, remembering the last successful match of a key.
 
-    const PTMapNodeT *best = NULL, *node = t->_m_root->_m_child[0];
-    unsigned npos, opos = t->_m_root->bpos;
+    const PTSetNodeT *best = NULL, *node = tree->_m_root->_m_child[0];
+    unsigned npos, opos = tree->_m_root->bpos;
     while ((npos = node->bpos) > opos) {
         if ((node->nbit <= bitlen) && patricia_equkey(key, node->nbit, node->data, node->nbit)) {
             best = node;
@@ -578,26 +546,24 @@ patricia_prefix(
 
 // -------------------------------------------------------------------------------------
 /// @brief  create node with given key & payload, insert into tree
-/// @param t        tree to insert into
+/// @param tree     tree to insert into
 /// @param key      key data storage
 /// @param bitlen   number of bits in key
-/// @param payload  payload to set in key
 /// @param inserted opt. storage for 'node created' flag
 /// @return         node with matching key (new or existing) or @c NULL on error
-const PTMapNodeT *
-patricia_insert(
-    PatriciaMapT *t,
-    const void *key,
-    uint16_t bitlen,
-    uintptr_t payload,
-    bool *inserted)
+const PTSetNodeT *
+patriset_insert(
+    PatriciaSetT *tree,
+    const void   *key ,
+    uint16_t    bitlen,
+    bool     *inserted)
 {
     // we do some pointer tracking here, but this time we do it with two pointers: we
     // need them both for the insert position!
 
-    PTMapNodeT *last, *next;
-    last = t->_m_root;
-    next = t->_m_root->_m_child[0];
+    PTSetNodeT *last, *next;
+    last = tree->_m_root;
+    next = tree->_m_root->_m_child[0];
     while (next->bpos > last->bpos) {
         last = next;
         next = last->_m_child[patricia_getbit(key, bitlen, last->bpos)];
@@ -619,7 +585,7 @@ patricia_insert(
     assert(0 != bpos);
 
     // Obviously, we need to create a new node -- which may fail, of course.
-    PTMapNodeT *node = ptnode_create(t, key, bitlen);
+    PTSetNodeT *node = ptnode_create(tree, key, bitlen);
     if (NULL == node) {
         // Darn. Game Over, player one!
         if (inserted) {
@@ -628,22 +594,21 @@ patricia_insert(
         return node; // existing node
     }
     node->bpos = bpos;
-    node->payload = payload;
 
-    // Find insert parent -- another walk, but this time depth-limited by thenew branch
+    // Find insert parent -- another walk, but this time depth-limited by the new branch
     // position we calculated.
     bool pdir = false;
-    last = t->_m_root;
-    next = t->_m_root->_m_child[0];
+    last = tree->_m_root;
+    next = tree->_m_root->_m_child[0];
     while ((next->bpos > last->bpos) && (next->bpos < bpos)) {
         last = next;
         pdir = patricia_getbit(key, bitlen, last->bpos);
         next = last->_m_child[pdir];
     }
 
-    // Link node between last (parent) and next (a _m_child -- or uplink!) Note that our own key
+    // Link node between last (parent) and next (a child or uplink!) Note that our own key
     // bit at the branch position defines which of the link point back to the new node
-    // itself; the _m_child link from the parent goes into the other slot.
+    // itself; the child link from the parent goes into the other slot.
     bool ndir = patricia_getbit(key, bitlen, bpos);
     node->_m_child[ ndir] = node;
     node->_m_child[!ndir] = next;
@@ -670,10 +635,10 @@ patricia_insert(
 
 // struct holding the result of a full tracked tree walk
 typedef struct {
-    PTMapNodeT *npar;   // true DOWNWARD link parent
-    PTMapNodeT *over;   // grandpa in treewalk (node visited before last)
-    PTMapNodeT *last;   // last node before current one
-    PTMapNodeT *node;   // final/current node in iteration
+    PTSetNodeT *npar;   // true DOWNWARD link parent
+    PTSetNodeT *over;   // grandpa in treewalk (node visited before last)
+    PTSetNodeT *last;   // last node before current one
+    PTSetNodeT *node;   // final/current node in iteration
 } NodeLinksT;
 
 // do a tree walk from root to node with root reached from the uplink, while also
@@ -681,10 +646,10 @@ typedef struct {
 static bool
 _pwalk(
     NodeLinksT       * const out ,
-    const PTMapNodeT * const root,
-    const PTMapNodeT * const node)
+    const PTSetNodeT * const root,
+    const PTSetNodeT * const node)
 {
-    const PTMapNodeT *over = root, *last = root, *next = root->_m_child[0];
+    const PTSetNodeT *over = root, *last = root, *next = root->_m_child[0];
 
     if ((NULL == node) || (root == node)) {
         return false;
@@ -692,21 +657,21 @@ _pwalk(
 
     while (next->bpos > last->bpos) {
         if (node == next) {
-            out->npar = (PTMapNodeT*)last;
+            out->npar = (PTSetNodeT*)last;
         }
         over = last;
         last = next;
         last = next;
         next = next->_m_child[patricia_getbit(node->data, node->nbit, next->bpos)];
     }
-    out->node = (PTMapNodeT*)next;
+    out->node = (PTSetNodeT*)next;
     assert((over->_m_child[0] == last) || (over->_m_child[1] == last));
     assert((last->_m_child[0] == next) || (last->_m_child[1] == next));
     assert(node == out->node);
 
-    out->over = (PTMapNodeT *)over;
-    out->last = (PTMapNodeT *)last;
-    out->node = (PTMapNodeT *)next;
+    out->over = (PTSetNodeT *)over;
+    out->last = (PTSetNodeT *)last;
+    out->node = (PTSetNodeT *)next;
     return (node == next);
 }
 
@@ -798,12 +763,12 @@ _pwalk(
 // To understand WHY that's all that must be done may take longer than writing it up ;)
 static void
 _evict(
-    PatriciaMapT     * const t   ,
+    PatriciaSetT     * const tree,
     const NodeLinksT * const walk)
 {
-    PTMapNodeT *x = walk->node;
-    PTMapNodeT *p = walk->last;
-    PTMapNodeT *g = walk->over;
+    PTSetNodeT *x = walk->node;
+    PTSetNodeT *p = walk->last;
+    PTSetNodeT *g = walk->over;
     assert(_isParentOf(p, x));
     assert(_isParentOf(g, p));
 
@@ -815,7 +780,7 @@ _evict(
     // Step II: IF 'x' != 'p', replace 'x' with 'p' in the tree. This needs access
     // the downward link to 'x', which we have registered on our way down to 'p'.
     if (x != p) {
-        PTMapNodeT *z = walk->npar;
+        PTSetNodeT *z = walk->npar;
         assert(_isParentOf(z, x)); // true downlink parent
 
         // replace the link to 'x' in 'z' with 'p'
@@ -827,23 +792,23 @@ _evict(
         p->bpos = x->bpos;
     }
 
-    memset(x, 0, offsetof(PTMapNodeT, data)); // purge node; paranoia rulez!
-    ptnode_free(t, x);
+    memset(x, 0, offsetof(PTSetNodeT, data)); // purge node; paranoia rulez!
+    ptnode_free(tree, x);
 }
 
 // -------------------------------------------------------------------------------------
 /// @brief remove a node by identity from a PATRICIA key
-/// @param t    tree owning the node
+/// @param tree tree owning the node
 /// @param node node to remove from tree
 /// @return     @c true on success, @c false on error (node not in tree)
 bool
-patricia_evict(
-    PatriciaMapT *t,
-    PTMapNodeT *node)
+patriset_evict(
+    PatriciaSetT *tree,
+    PTSetNodeT   *node)
 {
     NodeLinksT nodes;
-    if (_pwalk(&nodes, t->_m_root, node)) {
-        _evict(t, &nodes);
+    if (_pwalk(&nodes, tree->_m_root, node)) {
+        _evict(tree, &nodes);
         return true;
     }
     return false;
@@ -851,24 +816,20 @@ patricia_evict(
 
 // -------------------------------------------------------------------------------------
 /// @brief remove a node by key, optionally yielding the payload
-/// @param t        tree owning the node
+/// @param tree     tree owning the node
 /// @param key      key data storage
 /// @param bitlen   number of bits in key
 /// @param payload_out (opt) where to store the payload of the deleted node
 /// @return     @c true on success, @c false on error (node not in tree)
 bool
-patricia_remove(
-    PatriciaMapT *t,
-    const void *key,
-    uint16_t bitlen,
-    uintptr_t *payload_out)
+patriset_remove(
+    PatriciaSetT *tree,
+    const void   *key ,
+    uint16_t    bitlen)
 {
     NodeLinksT nodes;
-    if (_pwalk(&nodes, t->_m_root, patricia_lookup(t, key, bitlen))) {
-        if (payload_out) {
-            *payload_out = nodes.node->payload;
-        }
-        _evict(t, &nodes);
+    if (_pwalk(&nodes, tree->_m_root, patriset_lookup(tree, key, bitlen))) {
+        _evict(tree, &nodes);
         return true;
     }
     return false;
@@ -879,12 +840,12 @@ patricia_remove(
 // -------------------------------------------------------------------------------------
 static void
 fprint_tree(
-    FILE *ofp, const PTMapNodeT * const node, unsigned level, unsigned flags)
+    FILE *ofp, const PTSetNodeT * const node, unsigned level, unsigned flags)
 {
     if (0 == flags) {
         for (unsigned i = 0; i < level; ++i)
             fputs("    ", ofp);
-        fprintf(ofp, "+--(%p|%zu)--> '%s(%u)'\n", (void*)node, node->payload, node->data, node->bpos);
+        fprintf(ofp, "+--(%p)--> '%s(%u)'\n", (void*)node, node->data, node->bpos);
     } else {
         if (flags & 2)
             fprint_tree(ofp, node->_m_child[1], (level + 1), (node->_m_child[1]->bpos > node->bpos ? 3 : 0));
@@ -896,16 +857,17 @@ fprint_tree(
     }
 }
 
+// -------------------------------------------------------------------------------------
 /// @brief dump a tree as crude indented text
 /// @param ofp  where to write to
-/// @param pmap what to dump
+/// @param tree what to dump
 /// @note assumes key data is NUL-terminated ASCII text -- be prepared for fun if it's not!
 void
-patricia_print(
+patriset_print(
     FILE               *ofp ,
-    PatriciaMapT const *pmap)
+    PatriciaSetT const *tree)
 {
-    fprint_tree(ofp, pmap->_m_root->_m_child[0], 0, 3);
+    fprint_tree(ofp, tree->_m_root->_m_child[0], 0, 3);
 }
 
 // -------------------------------------------------------------------------------------
@@ -973,22 +935,24 @@ patricia_print(
 // reload after 65536 steps.
 // -------------------------------------------------------------------------------------
 
-static const PTMapNodeT*
+// -------------------------------------------------------------------------------------
+static const PTSetNodeT*
 iter_child(
-    PTMapNodeT const *node,
+    PTSetNodeT const *node,
     bool              dir )
 {
     if (NULL != node) {
-        PTMapNodeT *next = node->_m_child[dir];
+        PTSetNodeT *next = node->_m_child[dir];
         node = (node->bpos < next->bpos) ? next : NULL;
     }
     return node;
 }
 
+// -------------------------------------------------------------------------------------
 static void
 iter_parentPush(
-    PTMapIterT       *iter, 
-    PTMapNodeT const *node)
+    PTSetIterT       *iter, 
+    PTSetNodeT const *node)
 {
     static const unsigned pstkSize = sizeof(iter->_m_pstk) / sizeof(*iter->_m_pstk);
 
@@ -997,14 +961,15 @@ iter_parentPush(
     iter->_m_stkLen += (iter->_m_stkLen < pstkSize);
 }
 
-static const PTMapNodeT *
+// -------------------------------------------------------------------------------------
+static const PTSetNodeT *
 iter_parentPop(
-    PTMapIterT       *iter,
-    PTMapNodeT const *node)
+    PTSetIterT       *iter,
+    PTSetNodeT const *node)
 {
     static const unsigned pstkSize = sizeof(iter->_m_pstk) / sizeof(*iter->_m_pstk);
     
-    const PTMapNodeT *last, *next;
+    const PTSetNodeT *last, *next;
 
     // try to pop nod from stack first
     while (0 != iter->_m_stkLen) {
@@ -1105,22 +1070,24 @@ static const IterTableT revTable = {
     /* iDir_tail */ {oDir_root, iDir_head, -1               }
 };
 
+// -------------------------------------------------------------------------------------
 // the stpping function
-static const PTMapNodeT*
+static const PTSetNodeT*
 iter_step(
-    PTMapIterT *iter,
+    PTSetIterT      *iter  ,
     const IterTableT ttable)
 {
     bool              yield;
     EWayOut           odir;
     EWayIn            idir = iter->_m_state;
-    PTMapNodeT const *next = iter->_m_nodep, *last = NULL;
+    PTSetNodeT const *next = iter->_m_nodep, *last = NULL;
 
     do {
         last = next;
 
         yield = ttable[idir].mode == iter->_m_mode;
         odir  = ttable[idir].odir;
+        // stepping 'idir' must be LAST in this 3 steps!
         idir  = ttable[idir].idir;  // failure default -- normally replaced below
 
         switch (odir) {
@@ -1162,53 +1129,56 @@ iter_step(
     return last;
 }
 
+// -------------------------------------------------------------------------------------
 /// @brief set up an iterator
-/// @param iter iterator to operate on 
+/// @param iter iterator to operate on
 /// @param tree patricia tree owning the nodes
 /// @param root root of the subtree to iterate or @c NULL for full tree
 /// @param dir  @c true for left-to-right, false for right-to-left
 /// @param mode enumeration mode for the nodes
 void
-ptiter_init(
-    PTMapIterT       *iter,
-    PatriciaMapT     *tree,
-    PTMapNodeT const *root,
+psiter_init(
+    PTSetIterT       *iter,
+    PatriciaSetT     *tree,
+    PTSetNodeT const *root,
     bool              dir ,
     EPTIterMode       mode)
 {
     memset(iter, 0, sizeof(*iter));
-    iter->_m_tree  = tree;
     iter->_m_root  = root ? root : iter_child(tree->_m_root, 0);
     iter->_m_dir   = dir;
     iter->_m_mode  = mode;
     iter->_m_state = iDir_head;
 }
 
+// -------------------------------------------------------------------------------------
 /// @brief logical forward step of the iterator
 /// @param iter iterator to step
 /// @return     next node or NULL if end is reached
-const PTMapNodeT*
-ptiter_next(
-    PTMapIterT *iter)
+const PTSetNodeT*
+psiter_next(
+    PTSetIterT *iter)
 {
     return iter_step(iter, fwdTable);
 }
 
+// -------------------------------------------------------------------------------------
 /// @brief logical backward step of the iterator
 /// @param iter iterator to step
 /// @return     next node or NULL if end is reached
-const PTMapNodeT*
-ptiter_prev(
-    PTMapIterT *iter)
+const PTSetNodeT*
+psiter_prev(
+    PTSetIterT *iter)
 {
     return iter_step(iter, revTable);
 }
 
+// -------------------------------------------------------------------------------------
 /// @brief reset iterator to initial position
 /// @param iter iterator to reset
 void
-ptiter_reset(
-    PTMapIterT *iter)
+psiter_reset(
+    PTSetIterT *iter)
 {
     iter->_m_state  = iDir_head;
 }
@@ -1217,10 +1187,12 @@ ptiter_reset(
 // ==== Creating graphviz DOT files is easy with iteration working                  ====
 // -------------------------------------------------------------------------------------
 
+// -------------------------------------------------------------------------------------
+// format edges (link arrows) going from the given node
 static void
-_2dot_edges(FILE* ofp, PTMapNodeT const *node)
+_2dot_edges(FILE* ofp, PTSetNodeT const *node)
 {
-    PTMapNodeT const *next;
+    PTSetNodeT const *next;
     for (int idx = 0; idx < 2; ++idx) {
         next = node->_m_child[idx];
         if (next->bpos > node->bpos) {
@@ -1232,14 +1204,13 @@ _2dot_edges(FILE* ofp, PTMapNodeT const *node)
                     (void *)next, "we"[idx]);
         } else {
             fprintf(ofp, "  N%p:n%c -> N%p [constraint=false,color=red];\n", (void *)node, "we"[idx], (void *)next);
-            //fprintf(ofp, "  N%p -> N%p [constraint=false,color=red];\n", (void *)node, (void *)next);
         }
     }
 }
 
-static bool
-node2label(FILE* ofp, const PTMapNodeT* node)
-{
+// -------------------------------------------------------------------------------------
+// default node labe printer; assumes ASCIZZ string key and prints it
+static bool node2label(FILE *ofp, const PTSetNodeT *node) {
     unsigned char uch;
     const char   *scp;
     fprintf(ofp, "[%hu]", (unsigned short)node->bpos);
@@ -1255,25 +1226,31 @@ node2label(FILE* ofp, const PTMapNodeT* node)
     return true;
 }
 
+// -------------------------------------------------------------------------------------
+/// @brief dump a PATRICIA set (or map) to a grapviz DOT file
+/// @param ofp      output stream
+/// @param tree     tree to dump
+/// @param label    label writer function
+/// @return         @c true on success
 bool
-patricia_todot(
+patriset_todot(
     FILE *ofp,
-    PatriciaMapT const *tree,
-    bool (*label)(FILE*, const PTMapNodeT*))
+    PatriciaSetT const *tree,
+    bool (*label)(FILE*, const PTSetNodeT*))
 {
-    PTMapIterT        iter;
-    PTMapNodeT const *node;
+    PTSetIterT        iter;
+    PTSetNodeT const *node;
    
     if (NULL == label) {
         label = node2label;
     }
-    ptiter_init(&iter, (PatriciaMapT*)tree, NULL, true, ePTMode_preOrder);
+    psiter_init(&iter, (PatriciaSetT*)tree, NULL, true, ePTMode_preOrder);
     fputs("digraph G {\n", ofp);
 
     fprintf(ofp, "  N%p [label=\"R\",shape=doublecircle,style=filled];\n", (void *)tree->_m_root);
     _2dot_edges(ofp, tree->_m_root);
 
-    while (NULL != (node = ptiter_next(&iter))) {
+    while (NULL != (node = psiter_next(&iter))) {
         fprintf(ofp, "  N%p [label=\"", (void *)node);
         label(ofp, node);
         fputs("\";\n", ofp);

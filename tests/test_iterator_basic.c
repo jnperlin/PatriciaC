@@ -9,7 +9,7 @@
 // -------------------------------------------------------------------------------------
 // Credits to ChatGPT for doing the gritty details
 // -------------------------------------------------------------------------------------
-#include "cpatricia.h"
+#include "cpatricia_set.h"
 #include "helper_build_tree.h"
 #include "unity.h"
 #include <stdlib.h>
@@ -43,9 +43,10 @@ static void test_single_node_iteration(void)
 
     const char *k = "solo";
     bool ins;
-    const PTMapNodeT *n = patricia_insert(&m, k, (uint16_t)(strlen(k) * 8), 0x77, &ins);
+    PTMapNodeT *n = (PTMapNodeT*)patricia_insert(&m, k, (uint16_t)(strlen(k) * 8), &ins);
     TEST_ASSERT_NOT_NULL(n);
     TEST_ASSERT_TRUE(ins);
+    n->payload = 0x77;
 
     PTMapIterT it;
     ptiter_init(&it, &m, NULL, true, ePTMode_preOrder);
@@ -83,7 +84,7 @@ static void test_small_manual_tree(void)
     nv_init(&in);
     nv_init(&post);
 
-    const PTMapNodeT *root = m._m_root->_m_child[0];
+    const PTMapNodeT *root = s2m(m.tree._m_root->_m_child[0]);
     ref_preorder(root, &pre);
     ref_inorder(root, &in);
     ref_postorder(root, &post);

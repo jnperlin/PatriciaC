@@ -12,7 +12,7 @@
 #ifndef TEST_HELPER_BUILD_TREE_H
 #define TEST_HELPER_BUILD_TREE_H
 
-#include "cpatricia.h" /* your header (the one you pasted earlier) */
+#include "cpatricia_map.h" /* your header (the one you pasted earlier) */
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -29,6 +29,10 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+static inline PTMapNodeT *s2m(const PTSetNodeT *const np) {
+    return (NULL != np) ? (PTMapNodeT *)((char *)np - sizeof(uintptr_t)) : NULL;
+}
 
 uint16_t str2bits(const char *s);
 
