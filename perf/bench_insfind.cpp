@@ -1,5 +1,5 @@
 // ===================== bench_insert_lookup.cpp =====================
-#include "cpatricia_map.h" // Adjust include path to your project structure
+#include "cpatricia_set.h"
 #include <benchmark/benchmark.h>
 #include <cstring>
 #include <random>
@@ -32,14 +32,18 @@ static void BM_Patricia_Insert(benchmark::State &state) {
     auto keys = generate_random_strings(N, 16);
 
     for (auto _ : state) {
-        PatriciaMapT tree;
-        patricia_init(&tree);
+        state.PauseTiming();
+        PatriciaSetT tree;
+        patriset_init(&tree);
+        state.ResumeTiming();
 
         for (auto &s : keys) {
-            patricia_insert(&tree, s.c_str(), s.length()*CHAR_BIT, nullptr);
+            patriset_insert(&tree, s.c_str(), s.length()*CHAR_BIT, nullptr);
         }
 
-        patricia_fini(&tree);
+        state.PauseTiming();
+        patriset_fini(&tree);
+        state.ResumeTiming();
     }
 }
 
@@ -53,21 +57,24 @@ static void BM_Patricia_Lookup(benchmark::State &state) {
     const std::size_t N = static_cast<std::size_t>(state.range(0));
     auto keys = generate_random_strings(N, 16);
 
-    // Build a persistent tree once
-    PatriciaMapT tree;
-    patricia_init(&tree);
-
-    for (auto &s : keys) {
-        patricia_insert(&tree, s.c_str(), s.length() * CHAR_BIT, nullptr);
-    }
-
     for (auto _ : state) {
-        for (auto &s : keys) {
-            patricia_lookup(&tree, s.c_str(), s.length() * CHAR_BIT);
-        }
-    }
+        state.PauseTiming();
+        PatriciaSetT tree;
+        patriset_init(&tree);
 
-    patricia_fini(&tree);
+        for (auto &s : keys) {
+            patriset_insert(&tree, s.c_str(), s.length() * CHAR_BIT, nullptr);
+        }
+        state.ResumeTiming();
+
+        for (auto &s : keys) {
+            patriset_lookup(&tree, s.c_str(), s.length() * CHAR_BIT);
+        }
+
+        state.PauseTiming();
+        patriset_fini(&tree);
+        state.ResumeTiming();
+    }
 }
 
 BENCHMARK(BM_Patricia_Lookup)->Arg(1000)->Arg(10000)->Arg(50000);

@@ -57,12 +57,15 @@
 // ==== memory allocation & helpers                                                 ====
 // -------------------------------------------------------------------------------------
 
+// -------------------------------------------------------------------------------------
+// helpers to adjust pointers ein both directions: map to set, set to map
+
 static inline PTMapNodeT *s2m(const PTSetNodeT *const np) {
-    return (NULL != np) ? (PTMapNodeT *)((char *)np - sizeof(uintptr_t)) : NULL;
+    return (NULL != np) ? (PTMapNodeT *)((char *)np - offsetof(PTMapNodeT, _m_node)) : NULL;
 }
 
 static inline PTSetNodeT *m2s(const PTMapNodeT *const np) {
-    return (NULL != np) ? (PTSetNodeT*)&np->treelnk : NULL;
+    return (NULL != np) ? (PTSetNodeT*)&np->_m_node : NULL;
 }
 
 // -------------------------------------------------------------------------------------
@@ -72,7 +75,16 @@ alloc_wrap(
     void  *unused,
     size_t bytes )
 {
-    return m2s(malloc(sizeof(uintptr_t) + bytes));
+    // We assume that malloc handles the alignment stuff on a structure without special
+    // help from us.  But this is actually the place where you can start to play all the
+    // dirty tricks you need if you go for arena or pool based allocation...
+
+    PTMapNodeT *ptr = malloc(bytes + offsetof(PTMapNodeT, _m_node));
+    if (NULL != ptr) {
+        // initialise the payload here
+        ptr->payload = 0;
+    }
+    return m2s(ptr);
     (void)unused;
 }
 
@@ -83,7 +95,12 @@ free_wrap(
     void *unused,
     void *obj   )
 {
-    free(s2m(obj));
+    PTMapNodeT *ptr = s2m(obj);
+    if (NULL != ptr) {
+        // cleanup paload here
+        ptr->payload = 0;
+        free(ptr);
+    }
     (void)unused;
 }
 
@@ -98,19 +115,19 @@ free_wrap(
 /// @param fp       function pointer block with memory policy functions
 /// @param arena    additional data for policy functions
 void
-patricia_init_ex(
+patrimap_init_ex(
     PatriciaMapT     *t,
     const PTMemFuncT *fp,
     void             *arena)
 {
-    patriset_init_ex(&t->tree, fp, arena);
+    patriset_init_ex(&t->_m_set, fp, arena);
 }
 
 // -------------------------------------------------------------------------------------
 /// @brief set up a PATRICIA tree with default memory functions
 /// @param t        tree to initialise
 void
-patricia_init(
+patrimap_init(
     PatriciaMapT* t)
 {
     static const PTMemFuncT mf_memfunc = {
@@ -118,7 +135,7 @@ patricia_init(
         free_wrap,
         NULL
     };
-    patriset_init_ex(&t->tree, &mf_memfunc, NULL);
+    patriset_init_ex(&t->_m_set, &mf_memfunc, NULL);
 }
 
 // -------------------------------------------------------------------------------------
@@ -127,10 +144,10 @@ patricia_init(
 ///
 /// @param t        tree where all nodes should be flushed
 void
-patricia_fini(
+patrimap_fini(
     PatriciaMapT *t)
 {
-    patriset_fini(&t->tree);
+    patriset_fini(&t->_m_set);
 }
 
 // -------------------------------------------------------------------------------------
@@ -140,12 +157,12 @@ patricia_fini(
 /// @param bitlen   number of key bits
 /// @return         node with exact matcing key or @c NULL
 const PTMapNodeT *
-patricia_lookup(
+patrimap_lookup(
     const PatriciaMapT *t,
     const void *key,
     uint16_t bitlen)
 {
-    return s2m(patriset_lookup(&t->tree, key, bitlen));
+    return s2m(patriset_lookup(&t->_m_set, key, bitlen));
 }
 
 // -------------------------------------------------------------------------------------
@@ -155,12 +172,12 @@ patricia_lookup(
 /// @param bitlen   number of key bits
 /// @return         node with non-empty longest prefix key or @c NULL
 const PTMapNodeT *
-patricia_prefix(
+patrimap_prefix(
     const PatriciaMapT *t,
     const void *key,
     uint16_t bitlen)
 {
-    return s2m(patriset_prefix(&t->tree, key, bitlen));
+    return s2m(patriset_prefix(&t->_m_set, key, bitlen));
 }
 
 // -------------------------------------------------------------------------------------
@@ -171,13 +188,13 @@ patricia_prefix(
 /// @param inserted opt. storage for 'node created' flag
 /// @return         node with matching key (new or existing) or @c NULL on error
 const PTMapNodeT *
-patricia_insert(
+patrimap_insert(
     PatriciaMapT *t,
     const void *key,
     uint16_t bitlen,
     bool *inserted)
 {
-    return s2m(patriset_insert(&t->tree, key, bitlen, inserted));
+    return s2m(patriset_insert(&t->_m_set, key, bitlen, inserted));
 }
 
 // -------------------------------------------------------------------------------------
@@ -190,11 +207,11 @@ patricia_insert(
 /// @param node node to remove from tree
 /// @return     @c true on success, @c false on error (node not in tree)
 bool
-patricia_evict(
+patrimap_evict(
     PatriciaMapT *t,
     PTMapNodeT *node)
 {
-    return patriset_evict(&t->tree, m2s(node));
+    return patriset_evict(&t->_m_set, m2s(node));
 }
 
 // -------------------------------------------------------------------------------------
@@ -202,24 +219,14 @@ patricia_evict(
 /// @param t        tree owning the node
 /// @param key      key data storage
 /// @param bitlen   number of bits in key
-/// @param payload_out (opt) where to store the payload of the deleted node
-/// @return     @c true on success, @c false on error (node not in tree)
+/// @return     @c true on success, @c false on error (key not in tree)
 bool
-patricia_remove(
+patrimap_remove(
     PatriciaMapT *t,
     const void *key,
-    uint16_t bitlen,
-    uintptr_t *payload_out)
+    uint16_t bitlen)
 {
-    if (NULL != payload_out) {
-        PTSetNodeT const *np = patriset_lookup(&t->tree, key, bitlen);
-        if (NULL != np) {
-            *payload_out = s2m(np)->payload;
-        }
-        return patriset_evict(&t->tree, (PTSetNodeT*)np);
-    } else {
-        return patriset_remove(&t->tree, key, bitlen);
-    }
+    return patriset_remove(&t->_m_set, key, bitlen);
 }
 
 // -------------------------------------------------------------------------------------
@@ -232,43 +239,43 @@ patricia_remove(
 /// @param dir  @c true for left-to-right, false for right-to-left
 /// @param mode enumeration mode for the nodes
 void
-ptiter_init(
+pmapiter_init(
     PTMapIterT       *iter,
     PatriciaMapT     *tree,
     PTMapNodeT const *root,
     bool              dir ,
     EPTIterMode       mode)
 {
-    psiter_init(&iter->inner, &tree->tree, m2s(root), dir, mode);
+    psetiter_init(&iter->_m_inner, &tree->_m_set, m2s(root), dir, mode);
 }
 
 /// @brief logical forward step of the iterator
 /// @param iter iterator to step
 /// @return     next node or NULL if end is reached
 const PTMapNodeT*
-ptiter_next(
+pmapiter_next(
     PTMapIterT *iter)
 {
-    return s2m(psiter_next(&iter->inner));
+    return s2m(psetiter_next(&iter->_m_inner));
 }
 
 /// @brief logical backward step of the iterator
 /// @param iter iterator to step
 /// @return     next node or NULL if end is reached
 const PTMapNodeT*
-ptiter_prev(
+pmapiter_prev(
     PTMapIterT *iter)
 {
-    return s2m(psiter_prev(&iter->inner));
+    return s2m(psetiter_prev(&iter->_m_inner));
 }
 
 /// @brief reset iterator to initial position
 /// @param iter iterator to reset
 void
-ptiter_reset(
+pmapiter_reset(
     PTMapIterT *iter)
 {
-    psiter_reset(&iter->inner);
+    psetiter_reset(&iter->_m_inner);
 }
 
 // -*- that's all folks -*-

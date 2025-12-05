@@ -80,8 +80,8 @@ void nv_push(NodeVecT *v, const PTMapNodeT *n) {
 
 /* helper to detect a real downlink */
 static const PTMapNodeT *downchild(const PTMapNodeT *p, int dir) {
-    const PTSetNodeT *c = p->treelnk._m_child[dir];
-    if (c->bpos > p->treelnk.bpos) return s2m(c);
+    const PTSetNodeT *c = p->_m_node._m_child[dir];
+    if (c->bpos > p->_m_node.bpos) return s2m(c);
     return NULL;
 }
 
@@ -122,7 +122,7 @@ bool build_map_from_words(PatriciaMapT *map, const char *words[], uintptr_t star
     for (uintptr_t i = 0; words[i]; ++i) {
         bool ins = false;
         PTMapNodeT *n =
-            (PTMapNodeT*)patricia_insert(map, words[i], (uint16_t)(strlen(words[i]) * 8),  &ins);
+            (PTMapNodeT*)patrimap_insert(map, words[i], (uint16_t)(strlen(words[i]) * 8),  &ins);
         if (!n || !ins) return false;
         n->payload = (uintptr_t)(start_payload + i);
     }
@@ -148,7 +148,7 @@ bool build_random_map(PatriciaMapT *map, unsigned nkeys, unsigned seed) {
     for (unsigned i = 0; i < nkeys; ++i) {
         uint16_t bitlen = gen_random_key(seed + i * 7 + 3, tmp, sizeof tmp);
         bool ins = false;
-        PTMapNodeT *n = (PTMapNodeT*)patricia_insert(map, tmp, bitlen, &ins);
+        PTMapNodeT *n = (PTMapNodeT*)patrimap_insert(map, tmp, bitlen, &ins);
         if (!n) return false;
         n->payload = (uintptr_t)i;
     }

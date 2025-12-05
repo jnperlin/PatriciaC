@@ -26,7 +26,7 @@ static void test_all_orders_for_map(PatriciaMapT *m) {
     nv_init(&in);
     nv_init(&post);
 
-    const PTMapNodeT *root = s2m(m->tree._m_root->_m_child[0]);
+    const PTMapNodeT *root = s2m(m->_m_set._m_root->_m_child[0]);
     ref_preorder(root, &pre);
     ref_inorder(root, &in);
     ref_postorder(root, &post);
@@ -35,23 +35,23 @@ static void test_all_orders_for_map(PatriciaMapT *m) {
     const PTMapNodeT *x;
     NodeVecT got;
     /* pre-order */
-    ptiter_init(&it, m, NULL, true, ePTMode_preOrder);
+    pmapiter_init(&it, m, NULL, true, ePTMode_preOrder);
     nv_init(&got);
-    while ((x = ptiter_next(&it)) != NULL) nv_push(&got, x);
+    while ((x = pmapiter_next(&it)) != NULL) nv_push(&got, x);
     TEST_ASSERT_TRUE(compare_nodevecs(&pre, &got));
     nv_free(&got);
 
     /* in-order */
-    ptiter_init(&it, m, NULL, true, ePTMode_inOrder);
+    pmapiter_init(&it, m, NULL, true, ePTMode_inOrder);
     nv_init(&got);
-    while ((x = ptiter_next(&it)) != NULL) nv_push(&got, x);
+    while ((x = pmapiter_next(&it)) != NULL) nv_push(&got, x);
     TEST_ASSERT_TRUE(compare_nodevecs(&in, &got));
     nv_free(&got);
 
     /* post-order */
-    ptiter_init(&it, m, NULL, true, ePTMode_postOrder);
+    pmapiter_init(&it, m, NULL, true, ePTMode_postOrder);
     nv_init(&got);
-    while ((x = ptiter_next(&it)) != NULL) nv_push(&got, x);
+    while ((x = pmapiter_next(&it)) != NULL) nv_push(&got, x);
     TEST_ASSERT_TRUE(compare_nodevecs(&post, &got));
     nv_free(&got);
 
@@ -62,14 +62,14 @@ static void test_all_orders_for_map(PatriciaMapT *m) {
 
 static void test_modes_on_example_map(void) {
     PatriciaMapT m;
-    patricia_init(&m);
+    patrimap_init(&m);
 
     const char *words[] = {"alpha", "alpine", "al", "beta", "bet", "z", "zero", NULL};
     build_map_from_words(&m, words, 0);
 
     test_all_orders_for_map(&m);
 
-    patricia_fini(&m);
+    patrimap_fini(&m);
 }
 
 int main(void) {

@@ -22,6 +22,27 @@ void setUp(void) {
 void tearDown(void) {
 }
 
+static void test_clz(void)
+{
+    static const unsigned maxbit = sizeof(size_t) * CHAR_BIT;
+    size_t pattern;
+    // powers of two
+    for (unsigned s = 0; s < maxbit; ++s) {
+        pattern = (size_t)1 << s;
+        TEST_ASSERT_EQUAL((maxbit - s - 1), patricia_clz(pattern));
+    }
+    // LSB set
+    for (unsigned s = 0; s < maxbit; ++s) {
+        pattern = ((size_t)1 << s) | 1u;
+        TEST_ASSERT_EQUAL((maxbit - s - 1), patricia_clz(pattern));
+    }
+    // all bits below MSB set
+    for (unsigned s = 0; s < maxbit; ++s) {
+        pattern = ~(size_t)0 >> s;
+        TEST_ASSERT_EQUAL(s, patricia_clz(pattern));
+    }
+}
+
 static void test_getbit_z(void) {
     TEST_ASSERT_EQUAL(false, patricia_getbit(NULL, 0, 0));
     TEST_ASSERT_EQUAL(true , patricia_getbit(NULL, 0, 1));
@@ -81,6 +102,7 @@ static void test_bitdiff_extcpl(void) {
 
 int main(void) {
     UNITY_BEGIN();
+    RUN_TEST(test_clz);
     RUN_TEST(test_getbit_z);
     RUN_TEST(test_getbit_0);
     RUN_TEST(test_getbit_1);

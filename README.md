@@ -66,31 +66,30 @@ Sanitizers (address/undefined) are automatically enabled when supported by the c
 
 ## Using PatriciaC in your project
 
-The library is a single logical module. Typical usage is to include the header and compile the C source into your build directly:
+The library is a single logical module. Typical usage is to include the header(s) and compile the C source(s) into your build directly:
 
 ```c
-#include "patricia.h"
+#include "cpatricia_set.h"
 
-PatriciaMapT map;
-patricia_init(&map);
+PatriciaSetT set;
+patriset_init(&set);
 
-patricia_insert(&map, "test", 32, my_payload_ptr, NULL); // BITS, not bytes!
-void *p = patricia_lookup(&map, "test", 32);
+patriset_insert(&set, "test", 32, NULL); // len in BITS, not bytes!
+void *p = patrimap_lookup(&set, "test", 32);
 
-patricia_remove(&map, "test", 32);
-patricia_fini(&map);
+patriset_remove(&set, "test", 32);
+patriset_fini(&set);
 ```
 
 ### Node Layout
 
 ```c
-typedef struct pt_map_node_ {
-    struct pt_map_node_ *_m_child[2];
-    uintptr_t            payload;
-    uint16_t             _m_bpos;
+typedef struct pt_set_node_ {
+    struct pt_set_node_ *_m_child[2];
+    uint16_t             bpos;
     uint16_t             nbit;
     char                 data[1];
-} PTMapNodeT;
+} PTSetNodeT;
 ```
 
 Keys are stored in `data[]` with `nbit` bits.  An additional NUL byte is added to make string handling
@@ -101,17 +100,28 @@ Bit numbering: MSB of data[0] = bit 1.
 
 ---
 
+### Using as map / extending the set
+
+Having a set of keys is useful, but making a mapping from it has even more use cases.  Since the key
+nodes have a variant size by default, appending the value to the node is not possible -- you have to
+_prepend_ the data you need.  Since hooking in functions for memory allocation/deallocation and even
+arena flushing is easily possible by design, extending to a full map is easy enough.
+The pointer-adjusting magic can be contained in one thin layer -- have a look at `cpatricia_map.{c,h}`
+for an example / template how to do this, including shimming the iterator.
+
+---
+
 ## Iteration Example
 
 The iterator supports in-order, pre-order, and post-order traversal, forward or backward:
 
 ```c
-PTMapIterT it;
+PTSetIterT it;
 // iterate all nodes left-to-right, in-order
-ptiter_init(&it, &map, NULL, true, ePTMode_inOrder);
+psetiter_init(&it, &set, NULL, true, ePTMode_inOrder);
 
-const PTMapNodeT *n;
-while ((n = ptiter_next(&it)) != NULL) {
+const PTSetNodeT *n;
+while ((n = psetiter_next(&it)) != NULL) {
     printf("key = %.*s\n", (n->nbit + 7) / 8, n->data);
 }
 ```
@@ -119,10 +129,10 @@ while ((n = ptiter_next(&it)) != NULL) {
 For reverse (right-to-left) iteration:
 
 ```c
-ptiter_init(&it, &map, NULL, false, ePTMode_inOrder);
+psetiter_init(&it, &set, NULL, false, ePTMode_inOrder);
 
-const PTMapNodeT *n;
-while ((n = ptiter_next(&it)) != NULL) {
+const PTSetNodeT *n;
+while ((n = psetiter_next(&it)) != NULL) {
     ...
 }
 ```
@@ -130,10 +140,10 @@ while ((n = ptiter_next(&it)) != NULL) {
 For stepping back:
 
 ```c
-ptiter_init(&it, &map, NULL, true, ePTMode_inOrder);
+psetiter_init(&it, &set, NULL, true, ePTMode_inOrder);
 // ... do some steps forward here
 const PTMapNodeT *n;
-while ((n = ptiter_prev(&it)) != NULL) {
+while ((n = psetiter_prev(&it)) != NULL) {
     ...
 }
 ```
@@ -166,8 +176,11 @@ Unit tests also serve as **usage examples**, covering:
 
 ```
 PatriciaC/
-  src/        Implementation -- source and header
-  tests/      Unity-based unit tests
+  src/            Implementation -- source and header
+  tests/          Unity-based unit tests
+  perf/           Google-benchmark based tests
+  Unity/          Where ThrowTheSwitch's Unity unit test framework resides
+  GoogleBench/    Where Google benchmark framework resides
   CMakeLists.txt
   README.md
   LICENSE     CC0

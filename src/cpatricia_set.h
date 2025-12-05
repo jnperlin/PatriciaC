@@ -39,7 +39,7 @@ extern "C" {
 ///
 /// The deallocator gets a node pointer.  For a map, the base pointer has to be revovered
 /// from the structure of the real map node.  If the payload contains data that needs
-/// cleanup, this is the palce to do it.  The deallocator does not really have to free
+/// cleanup, this is the place to do it.  The deallocator does not really have to free
 /// the memory block. That would cause a memory leak, of course, unless the 3rd function
 /// is also used:
 ///
@@ -58,7 +58,7 @@ typedef struct pt_set_node_ {
     struct pt_set_node_ *_m_child[2];///< @brief child[0]=left, child[1]=right
 # ifdef PATRICIA_TEST_LINKCNT
     unsigned int        lcount;      ///< test only!
-#endif
+# endif
     uint16_t             bpos;       ///< @brief \bold{(RO)} branching bit position (Pascal index)
     uint16_t             nbit;       ///< @brief \bold{(RO)} key length in bits
     char                 data[1];    ///< @brief \bold{(RO)} piggy-packed key bytes
@@ -82,6 +82,8 @@ extern bool              patriset_evict(PatriciaSetT *t, PTSetNodeT *node);
 extern bool              patriset_remove(PatriciaSetT *t, const void *key, uint16_t bitlen);
 
 // the next are exported for easy unit testing
+extern unsigned int      patricia_clz(size_t v);
+extern size_t            patricia_bswap(size_t v);
 extern bool              patricia_getbit(const void *base, uint16_t bitlen, uint16_t bitidx);
 extern uint16_t          patricia_bitdiff(const void *p1, uint16_t l1, const void *p2, uint16_t l2);
 extern bool              patricia_equkey(const void *p1, uint16_t l1, const void *p2, uint16_t l2);
@@ -117,10 +119,10 @@ typedef struct {
     bool                _m_dir;         ///< @brief direction, true is laft-to-right
 } PTSetIterT;
 
-extern void              psiter_init(PTSetIterT *i, PatriciaSetT *t, const PTSetNodeT *root, bool dir, EPTIterMode mode);
-extern const PTSetNodeT *psiter_next(PTSetIterT *i);
-extern const PTSetNodeT *psiter_prev(PTSetIterT *i);
-extern void              psiter_reset(PTSetIterT *i);
+extern void              psetiter_init(PTSetIterT *i, PatriciaSetT *t, const PTSetNodeT *root, bool dir, EPTIterMode mode);
+extern const PTSetNodeT *psetiter_next(PTSetIterT *i);
+extern const PTSetNodeT *psetiter_prev(PTSetIterT *i);
+extern void              psetiter_reset(PTSetIterT *i);
 
 extern void patriset_print(FILE *ofp, PatriciaSetT const *tree);
 extern bool patriset_todot(FILE *ofp, PatriciaSetT const *tree, bool (*label)(FILE *, const PTSetNodeT *));

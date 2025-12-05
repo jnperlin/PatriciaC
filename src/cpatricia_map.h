@@ -17,7 +17,6 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdio.h>
 
 #include "cpatricia_set.h"
 
@@ -26,39 +25,36 @@ extern "C" {
 #endif
 
 /// @brief Patricia Map node
-/// This si a key-value-pair, where the fixed-size value is *prepended* to the var-sized
+/// This is a key-value-pair, where the fixed-size value is *prepended* to the var-sized
 /// patricia set node that is used for managing the tree.
 typedef struct {
     uintptr_t       payload;    ///< @brief user-define payload
-    PTSetNodeT      treelnk;    ///< @brief the SET node we're based on
+    PTSetNodeT      _m_node;    ///< @brief the SET node we're based on
 } PTMapNodeT;
 
 /// @brief Typing capsule -- basically a map is a set with additional info
 typedef struct {
-    PatriciaSetT    tree;       ///< @brief the basic set we're extending
+    PatriciaSetT    _m_set;    ///< @brief the basic set we're extending
 } PatriciaMapT;
 
-extern void              patricia_init_ex(PatriciaMapT *t, const PTMemFuncT *fp, void *arena);
-extern void              patricia_init(PatriciaMapT *t);
-extern void              patricia_fini(PatriciaMapT *t);
+extern void              patrimap_init_ex(PatriciaMapT *t, const PTMemFuncT *fp, void *arena);
+extern void              patrimap_init(PatriciaMapT *t);
+extern void              patrimap_fini(PatriciaMapT *t);
 
-extern const PTMapNodeT *patricia_lookup(const PatriciaMapT *t, const void *key, uint16_t bitlen);
-extern const PTMapNodeT *patricia_prefix(const PatriciaMapT *t, const void *key, uint16_t bitlen);
-extern const PTMapNodeT *patricia_insert(PatriciaMapT *t, const void *key, uint16_t bitlen, bool *inserted);
-extern bool              patricia_evict(PatriciaMapT *t, PTMapNodeT *node);
-extern bool              patricia_remove(PatriciaMapT *t, const void *key, uint16_t bitlen, uintptr_t *payload_out);
+extern const PTMapNodeT *patrimap_lookup(const PatriciaMapT *t, const void *key, uint16_t bitlen);
+extern const PTMapNodeT *patrimap_prefix(const PatriciaMapT *t, const void *key, uint16_t bitlen);
+extern const PTMapNodeT *patrimap_insert(PatriciaMapT *t, const void *key, uint16_t bitlen, bool *inserted);
+extern bool              patrimap_evict(PatriciaMapT *t, PTMapNodeT *node);
+extern bool              patrimap_remove(PatriciaMapT *t, const void *key, uint16_t bitlen);
 
 typedef struct {
-    PTSetIterT  inner;  ///< @brief the inner iterator we're using   
+    PTSetIterT _m_inner; ///< @brief the inner iterator we're using   
 } PTMapIterT;
 
-extern void              ptiter_init(PTMapIterT *i, PatriciaMapT *t, const PTMapNodeT *root, bool dir, EPTIterMode mode);
-extern const PTMapNodeT *ptiter_next(PTMapIterT *i);
-extern const PTMapNodeT *ptiter_prev(PTMapIterT *i);
-extern void              ptiter_reset(PTMapIterT *i);
-
-extern void patricia_print(FILE *ofp, PatriciaMapT const *tree);
-extern bool patricia_todot(FILE *ofp, PatriciaMapT const *tree, bool (*label)(FILE *, const PTMapNodeT *));
+extern void              pmapiter_init(PTMapIterT *i, PatriciaMapT *t, const PTMapNodeT *root, bool dir, EPTIterMode mode);
+extern const PTMapNodeT *pmapiter_next(PTMapIterT *i);
+extern const PTMapNodeT *pmapiter_prev(PTMapIterT *i);
+extern void              pmapiter_reset(PTMapIterT *i);
 
 #ifdef __cplusplus
 }

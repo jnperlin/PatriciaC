@@ -53,6 +53,14 @@
 #include <limits.h>
 #include <assert.h>
 
+#if (defined(__GNUC__) || defined(__clang__))
+# define UNLIKELY(x)    __builtin_expect(!!(x), 0)
+# define LIKELY(x)      __builtin_expect(!!(x), 1)
+#else
+# define UNLIKELY(x)    x
+# define LIKELY(x)      x
+#endif
+
 // -------------------------------------------------------------------------------------
 // ==== tree topology relation helpers                                              ====
 // -------------------------------------------------------------------------------------
@@ -111,7 +119,7 @@ ptnode_create(
     unsigned    bytelen = ((unsigned)bitlen + CHAR_BIT - 1) / CHAR_BIT;
     size_t      nodelen = offsetof(PTSetNodeT, data) + bytelen + 1; // reserve one extra NUL byte
     PTSetNodeT *nodeptr = tree->_m_mfunc->fp_alloc(tree->_m_arena, nodelen);
-    if (NULL != nodeptr) {
+    if (LIKELY(NULL != nodeptr)) {
         memset(nodeptr, 0, offsetof(PTSetNodeT, data));
         nodeptr->nbit = bitlen;
         memcpy(nodeptr->data, keystr, bytelen);
@@ -145,20 +153,32 @@ ptnode_free(
 // -------------------------------------------------------------------------------------
 
 // -------------------------------------------------------------------------------------
-// byte swapper -- try builtins where possible, do SWAR steps to shuffle the bytes in
-// a 'size_t' value otherwise.
-static size_t
-bswapz(
+// We use two low-level functions here that are essential for performance:
+//
+//  - swap the bytes in a size_t, needed on little-endian machines
+//  - count leading zero bits in a 'size_t' value
+//
+// For both, at least GCC and Clang provide builtins, and on these paltforms, they get
+// properly used whne applicable.  But for other compilers or weird operand sizes some
+// fallback must be provided, and that should better be portable, without invoking UB
+// or other unwanted effects...
+
+// -------------------------------------------------------------------------------------
+/// @brief swap bytes ( @c CHAR_BIT sized units ) in a @c size_t value
+///
+/// Swapping the byte order of a @c size_t value in the most generic way.  This is
+/// intended as a fallback implementation if the compiler/runtime does not provide
+/// provide a better solution.  Portable, reasonably efficient, UB-free, constant-time.
+/// But it will not outperform a 'BSWAP' machine instruction!
+///
+/// @param v    value where bytes should be mirrored
+/// @return     byte-swapped value
+size_t
+patricia_bswap(
     size_t v)
 {
-#if defined(__GNUC__) || defined(_clang)
-    switch (sizeof(size_t)) {
-    case 2: return __builtin_bswap16((uint16_t)v);
-    case 4: return __builtin_bswap32((uint32_t)v);
-    case 8: return __builtin_bswap64((uint64_t)v);
-    }
-#endif
-    {
+    if (0 == (sizeof(size_t) & (sizeof(size_t) - 1))) {
+        // no bultin swap, but we can SWAR a few times
         unsigned bits = sizeof(size_t) * CHAR_BIT;
         size_t   mask = (size_t)-1;
         while (bits > CHAR_BIT) {
@@ -166,44 +186,101 @@ bswapz(
             mask  ^= (mask << bits);
             v = ((v & mask) << bits) | ((v >> bits) & mask);
         }
+    } else {
+        // yuck. We have to shift in/out. Seems bad, but for the actual sizes we might
+        // have to work with, it isn't.  Using a Benes network would by asymptotically
+        // faster ( O(log(N)) vs O(N) ), but the costs for startup and a single pass are
+        // so high that it will never pay off -- and the optimizer might even reject
+        // loop unrolling.  So, for all really odd systems whith sizeof(size_t) not
+        // being a power of two, this is probably the best viable solution.
+        size_t u = 0u;
+        for (unsigned loops = sizeof(size_t); loops; --loops) {
+            u <<= CHAR_BIT;
+            u |= (unsigned char)v;
+            v >>= CHAR_BIT;
+        }
+        v = u;
     }
     return v;
 }
 
 // -------------------------------------------------------------------------------------
-// Count leading zeros in a 'size_t' value. Resorts to builtins where practicable, uses
-// a semi-dumb loop as fallback.
-static unsigned
-patriset_clz(
+/// @brief count leading zero bits in a value
+///
+/// Generic solution that works with _any_ size of bits in a size_t: even, odd, prime,
+/// and yes, even with powers of two.  UB-free, reasonably fast, constant-time.
+///
+/// For a defined number of bits, a DeBruijn sequence based implementation is typically
+/// faster,  but the table, multiplier and shifts have to be chosen for exactly the
+/// operand width.  _This_ little gizmo works literally everywhere.
+///
+/// @note       The retun value is undefined if the argument is zero!
+/// 
+/// @param v    value to inspect
+/// @return     return number of leading zero bits if v != 0, unspecified integer else
+unsigned int
+patricia_clz(
     size_t v)
 {
+    // do a binary/partioning search for the number of leading zeros
+    size_t   mask = (size_t)-1;
+    unsigned bits = sizeof(size_t) * CHAR_BIT;
+    unsigned nclz = 0;
+    while (0 != bits) {
+        unsigned s = (bits + 1) >> 1;
+        mask ^= (mask >> s);     // mask recurrence, top to down
+        if (0 == (v & mask)) {   // this if/else might turn into conditional movs
+            nclz += s;
+        } else {
+            v &= mask;
+        }
+        bits -= s;
+    }
+    return nclz;
+}
+
+// -------------------------------------------------------------------------------------
+// byte swapper -- try builtins where possible, use portable fallback else
+static size_t
+bswapz(
+    size_t v)
+{
+#if (defined(__GNUC__) || defined(_clang))
+    switch (sizeof(size_t)) {
+    case 2: return __builtin_bswap16((uint16_t)v);
+    case 4: return __builtin_bswap32((uint32_t)v);
+    case 8: return __builtin_bswap64((uint64_t)v);
+    }
+#endif
+    return patricia_bswap(v);
+}
+
+// -------------------------------------------------------------------------------------
+// Count leading zeros in a 'size_t' value. Resorts to builtins where practicable, uses
+// a portable implementation as fallback.
+#define EXCESS(_t_) ((sizeof(_t_) - sizeof(size_t)) * CHAR_BIT)
+
+static unsigned
+clzz(
+    size_t v)
+{
+    // Many implementations of CLZ have undefined behaviour if called with zero. We nail
+    // it down ourselves!
     if (0 == v) {
         return sizeof(size_t) * CHAR_BIT;
     }
 
-#if defined(__GNUC__) || defined(__clang)
+    // GCC and Clang have builtins. Other compilers might, too...  
+# if (defined(__GNUC__) || defined(__clang))
     if (sizeof(int) >= sizeof(size_t))
-        return __builtin_clz((unsigned int)v) - (sizeof(int) - sizeof(size_t)) * CHAR_BIT;
+        return __builtin_clz((unsigned int)v) - EXCESS(int);
     if (sizeof(long int) >= sizeof(size_t))
-        return __builtin_clzl((unsigned long int)v) - (sizeof(long int) - sizeof(size_t)) * CHAR_BIT;
+        return __builtin_clzl((unsigned long int)v) - EXCESS(long int);
     if (sizeof(long long int) >= sizeof(size_t))
-        return __builtin_clzll((unsigned long long int)v) - (sizeof(long long int) - sizeof(size_t)) * CHAR_BIT;
-#endif
-    {
-        static const size_t grpmask = ~(size_t)0 << ((sizeof(size_t) - 1) * CHAR_BIT);
-        static const size_t msbmask = ~(size_t)0 << (sizeof(size_t) * CHAR_BIT - 1);
+        return __builtin_clzll((unsigned long long int)v) - EXCESS(long long int);
+# endif
 
-        unsigned n = 0;
-        while ( !(v & grpmask)) {
-            v <<= CHAR_BIT;
-            n += CHAR_BIT;
-        }
-        while (!(v & msbmask)) {
-            v <<= 1;
-            n += 1;
-        }
-        return n;
-    }
+    return patricia_clz(v);
 }
 
 // -------------------------------------------------------------------------------------
@@ -272,21 +349,53 @@ patricia_getbit(
     uint16_t    bitlen,
     uint16_t    bitidx)
 {
-    bool bit = false, neg = false;
-    const uint8_t *bytes = base;
+    // This version avoids branches as far as reasonable by using mask expressions and
+    // bit level logic.  It should be *very* friendly to the pipeline and the branch
+    // predictor!
 
-    if (bitidx == 0) {
-        return false;
+    const unsigned char * const bytes = base;
+
+    // extend flag mask: 0xFFFF if bitidx > bitlen, else 0
+    unsigned bindex, bshift, exmask = -(bitidx > bitlen);
+
+    // With zero index or zero length, we're done: Continuing here would only lead to
+    // more complicated code below or even UB. Just tell the compiler that he should
+    // expect the condition NOT to trigger in the mainstream flow!
+    if (UNLIKELY((bitlen == 0) | (bitidx == 0))) { // bitwise OR intentional!
+        return (exmask & 1u);
     }
 
-    neg = bitidx > bitlen;
-    if (0 == bitlen) {
-        return neg; // == (bitidx > 0)
-    }
+    // clamp index: zidx = min(zidx, bitlen) - 1
+    // This happends *very* often during traversal, hence the NO BRANCH policy.
+    bitidx = ((bitidx & ~exmask) | (bitlen & exmask)) - 1u;
 
-    bitidx = (neg ? bitlen : bitidx) - 1; // clamp & index (unity-based) to offset (zero-based)
-    bit = (bytes[bitidx >> 3] >> (~bitidx & 7)) & 1;
-    return bit ^ neg;
+    // compute byte index and shift
+    // While one should let the compiler sort out the optimisation, we give some very
+    // strong hints here.
+    //
+    // !!Note!! since the MSB is bit 1, we have to flip the counting direction. Funny
+    //          enough, if we do masking, this is simply done masking the one's
+    //          complement of the index.
+#if CHAR_BIT == 8
+    // The common case - 8-bit chars. We do the standard shift/mask approach to get
+    // the char/byte position and the shift. 
+    bindex = (bitidx >> 3);
+    bshift = (~bitidx & 7u);
+#elif (CHAR_BIT & (CHAR_BIT - 1)) == 0
+    // Funny char size, but at leat it is still a power of two. We have to divide and
+    // hope the compiler does the trick with some shifting.  The modulus can definitely
+    // be constructed as a mask.
+    bindex = bitidx / CHAR_BIT;
+    bshift = (~bitidx & (CHAR_BIT - 1u));
+#else
+    // It's a strange animal we're riding: Whe have to do div/mod and hope the optimizer
+    // evaluates that open-coded somehow, or least get div/mod in one pass.
+    bindex = bitidx / CHAR_BIT;
+    bshift = (CHAR_BIT - 1) - (bitidx % CHAR_BIT);
+#endif
+
+    // extract bit. XOR with extend flag, branch-free: exmask & 1 gives 1 if extend, 0 otherwise
+    return ((bytes[bindex] >> bshift) ^ exmask) & 1u;
 }
 
 // -------------------------------------------------------------------------------------
@@ -325,18 +434,18 @@ patricia_bitdiff(
     BitStreamT bs2 = {.ptr = p2, .bits = l2, .last = patricia_getbit(p2, l2, l2)};
 
     for (unsigned words = (bits + limb_bits - 1) / limb_bits; words; --words) {
-        size_t accu = (nextbits(&bs1) ^ nextbits(&bs2));    // difference pattern
-        if (0 != accu) {                                    // any difference found?
-            if (endian.c[0] == 1) {                         // little endian target?
-                accu = bswapz(accu);                        // swap bytes in pattern
+        size_t accu = (nextbits(&bs1) ^ nextbits(&bs2));// difference pattern
+        if (0 != accu) {                                // any difference found?
+            if (endian.c[0] == 1) {                     // little endian target?
+                accu = bswapz(accu);                    // swap bytes in pattern
             }
-            return (uint16_t)(bpos + patriset_clz(accu));   // use quick bit counting
+            return (uint16_t)(bpos + clzz(accu));       // use quick bit counting
         }
         bpos += limb_bits;                                  // prepare for next limb
     }
     // If there's no difference, we have two possibilities: The length of both patterns
     // is equal, in which case we return zero, flagging "equal patterns"; otherwise the
-    // difference MUST be after the last bit! 
+    // difference MUST be after the last bit!
     return (l1 == l2) ? 0 : bits + 1;
 }
 
@@ -345,7 +454,7 @@ patricia_bitdiff(
 /// Quick bit stream equality tester. While this could be emulated with the differencer
 /// yielding zero, calculating the first bit difference is heavy lifting compared to a
 /// simple equality check that will bail out immediately for different key length and
-/// use @c memcmp() internally to do a gallopping run over full bytes. 
+/// use @c memcmp() internally to do a gallopping run over full bytes.
 /// @param p1 memory base of 1st key
 /// @param l1 bit length of 1st key
 /// @param p2 memory base of 2nd key
@@ -373,7 +482,7 @@ patricia_equkey(
 
     if (0 != ebits) {
         unsigned char mask = UCHAR_MAX << (CHAR_BIT - ebits);
-        if (0 != ((b1[bytes] ^ b2[bytes]) & mask)) {            
+        if (0 != ((b1[bytes] ^ b2[bytes]) & mask)) {
             return false;   // mismatch in remaining bits --> unequal
         }
     }
@@ -879,7 +988,7 @@ patriset_print(
 // This can be expressed by logical bit-flipping transformations, and the step function
 // makes heavy use of these properties: One function that handles both directions as
 // well as all three types of enumeration with minimal fuzz, forward and backward.
-// But it may need careful reading to see that it really covers it all. 
+// But it may need careful reading to see that it really covers it all.
 // -------------------------------------------------------------------------------------
 
 // -------------------------------------------------------------------------------------
@@ -951,7 +1060,7 @@ iter_child(
 // -------------------------------------------------------------------------------------
 static void
 iter_parentPush(
-    PTSetIterT       *iter, 
+    PTSetIterT       *iter,
     PTSetNodeT const *node)
 {
     static const unsigned pstkSize = sizeof(iter->_m_pstk) / sizeof(*iter->_m_pstk);
@@ -968,7 +1077,7 @@ iter_parentPop(
     PTSetNodeT const *node)
 {
     static const unsigned pstkSize = sizeof(iter->_m_pstk) / sizeof(*iter->_m_pstk);
-    
+
     const PTSetNodeT *last, *next;
 
     // try to pop nod from stack first
@@ -1045,7 +1154,7 @@ typedef enum {  // leave node with ...
 } EWayOut;
 
 typedef struct {
-    uint8_t odir : 3;   
+    uint8_t odir : 3;
     uint8_t idir : 3;
     uint8_t mode : 2;
 } IterTransT;
@@ -1137,7 +1246,7 @@ iter_step(
 /// @param dir  @c true for left-to-right, false for right-to-left
 /// @param mode enumeration mode for the nodes
 void
-psiter_init(
+psetiter_init(
     PTSetIterT       *iter,
     PatriciaSetT     *tree,
     PTSetNodeT const *root,
@@ -1156,7 +1265,7 @@ psiter_init(
 /// @param iter iterator to step
 /// @return     next node or NULL if end is reached
 const PTSetNodeT*
-psiter_next(
+psetiter_next(
     PTSetIterT *iter)
 {
     return iter_step(iter, fwdTable);
@@ -1167,7 +1276,7 @@ psiter_next(
 /// @param iter iterator to step
 /// @return     next node or NULL if end is reached
 const PTSetNodeT*
-psiter_prev(
+psetiter_prev(
     PTSetIterT *iter)
 {
     return iter_step(iter, revTable);
@@ -1177,7 +1286,7 @@ psiter_prev(
 /// @brief reset iterator to initial position
 /// @param iter iterator to reset
 void
-psiter_reset(
+psetiter_reset(
     PTSetIterT *iter)
 {
     iter->_m_state  = iDir_head;
@@ -1240,17 +1349,17 @@ patriset_todot(
 {
     PTSetIterT        iter;
     PTSetNodeT const *node;
-   
+
     if (NULL == label) {
         label = node2label;
     }
-    psiter_init(&iter, (PatriciaSetT*)tree, NULL, true, ePTMode_preOrder);
+    psetiter_init(&iter, (PatriciaSetT*)tree, NULL, true, ePTMode_preOrder);
     fputs("digraph G {\n", ofp);
 
     fprintf(ofp, "  N%p [label=\"R\",shape=doublecircle,style=filled];\n", (void *)tree->_m_root);
     _2dot_edges(ofp, tree->_m_root);
 
-    while (NULL != (node = psiter_next(&iter))) {
+    while (NULL != (node = psetiter_next(&iter))) {
         fprintf(ofp, "  N%p [label=\"", (void *)node);
         label(ofp, node);
         fputs("\";\n", ofp);

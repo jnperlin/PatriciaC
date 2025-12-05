@@ -55,7 +55,7 @@ void ref_preorder(const PTMapNodeT *root, NodeVecT *out);
 void ref_inorder(const PTMapNodeT *root, NodeVecT *out);
 void ref_postorder(const PTMapNodeT *root, NodeVecT *out);
 
-/* build a map from array of null-terminated strings using patricia_insert */
+/* build a map from array of null-terminated strings using patrimap_insert */
 bool build_map_from_words(PatriciaMapT *map, const char *words[], uintptr_t start_payload);
 
 /* generate a random key (bytes) and return bitlen, stores bytes in buf.
