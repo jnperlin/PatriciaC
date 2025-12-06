@@ -46,6 +46,7 @@
 // -------------------------------------------------------------------------------------
 
 #include "cpatricia_map.h"
+#include "vmbumppool.h"
 
 #include <string.h>
 #include <stddef.h>
@@ -68,8 +69,58 @@ static inline PTSetNodeT *m2s(const PTMapNodeT *const np) {
     return (NULL != np) ? (PTSetNodeT*)&np->_m_node : NULL;
 }
 
+#if PATRIMAP_USE_ARENA
+
 // -------------------------------------------------------------------------------------
 // default node allocator using 'malloc()'
+static void*
+alloc_wrap(
+    void  *arena,
+    size_t bytes )
+{
+    // We assume that malloc handles the alignment stuff on a structure without special
+    // help from us.  But this is actually the place where you can start to play all the
+    // dirty tricks you need if you go for arena or pool based allocation...
+
+    PTMapNodeT *ptr = vmBump_alloc(arena, bytes + offsetof(PTMapNodeT, _m_node), sizeof(void*));
+    if (NULL != ptr) {
+        // initialise the payload here
+        ptr->payload = 0;
+    }
+    return m2s(ptr);
+}
+
+// -------------------------------------------------------------------------------------
+// default node deallocator using 'free()'
+static void
+free_wrap(
+    void *unused,
+    void *obj   )
+{
+    PTMapNodeT *ptr = s2m(obj);
+    if (NULL != ptr) {
+        memset(ptr, 0, sizeof(*ptr));
+    }
+    (void)unused;
+}
+
+static void
+kill_wrap(void *arena)
+{
+    vmBump_fini(arena);
+}
+
+static void*
+pool_wrap(void *arena)
+{
+    vmBump_init(arena, 16 << 10, 2);
+    return arena;
+}
+#else
+
+// -------------------------------------------------------------------------------------
+// default node allocator using 'malloc()'
+
 static void*
 alloc_wrap(
     void  *unused,
@@ -104,6 +155,18 @@ free_wrap(
     (void)unused;
 }
 
+static void
+kill_wrap(void *arena)
+{
+    (void)arena;
+}
+
+static void*
+pool_wrap(void *arena)
+{
+    return arena;
+}
+#endif
 
 // -------------------------------------------------------------------------------------
 // ==== Core operations                                                             ====
@@ -133,9 +196,9 @@ patrimap_init(
     static const PTMemFuncT mf_memfunc = {
         alloc_wrap,
         free_wrap,
-        NULL
+        kill_wrap
     };
-    patriset_init_ex(&t->_m_set, &mf_memfunc, NULL);
+    patriset_init_ex(&t->_m_set, &mf_memfunc, pool_wrap(&t->_m_mem));
 }
 
 // -------------------------------------------------------------------------------------
@@ -233,7 +296,7 @@ patrimap_remove(
 // ==== Iteration can be fun, actually ;)                                           ====
 // -------------------------------------------------------------------------------------
 /// @brief set up an iterator
-/// @param iter iterator to operate on 
+/// @param iter iterator to operate on
 /// @param tree patricia tree owning the nodes
 /// @param root root of the subtree to iterate or @c NULL for full tree
 /// @param dir  @c true for left-to-right, false for right-to-left

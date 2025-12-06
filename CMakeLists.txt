@@ -10,6 +10,10 @@ project(PatriciaC VERSION 0.1.0 LANGUAGES C CXX)
 
 find_package(Git QUIET)
 
+option(VMARENA_USE_MADVISE "use 'madvise()' if availabvle" ON)
+option(PATRIMAP_USE_ARENA  "use arena alloc for map test" ON)
+
+
 # ThrowTheSwitch Unity integration for PatriciaC
 # ===============================================================================
 set(PATRICIAC_UNITY_SUBMODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/Unity")
@@ -84,8 +88,9 @@ elseif(CMAKE_C_COMPILER_ID STREQUAL "Clang")
             -Wextra
             -Wpedantic
             $<$<COMPILE_LANGUAGE:C>:-Wmissing-prototypes>
-            -Wno-c2y-extensions
             -Werror
+            -Wno-unknown-warning-option
+            -Wno-c2y-extensions
         )
     endif()
 elseif(MSVC)

@@ -19,6 +19,7 @@
 #include <stdint.h>
 
 #include "cpatricia_set.h"
+#include "vmbumppool.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -35,6 +36,7 @@ typedef struct {
 /// @brief Typing capsule -- basically a map is a set with additional info
 typedef struct {
     PatriciaSetT    _m_set;    ///< @brief the basic set we're extending
+    VmBumpPoolT        _m_mem;
 } PatriciaMapT;
 
 extern void              patrimap_init_ex(PatriciaMapT *t, const PTMemFuncT *fp, void *arena);
@@ -48,7 +50,7 @@ extern bool              patrimap_evict(PatriciaMapT *t, PTMapNodeT *node);
 extern bool              patrimap_remove(PatriciaMapT *t, const void *key, uint16_t bitlen);
 
 typedef struct {
-    PTSetIterT _m_inner; ///< @brief the inner iterator we're using   
+    PTSetIterT _m_inner; ///< @brief the inner iterator we're using
 } PTMapIterT;
 
 extern void              pmapiter_init(PTMapIterT *i, PatriciaMapT *t, const PTMapNodeT *root, bool dir, EPTIterMode mode);

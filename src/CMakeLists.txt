@@ -7,4 +7,7 @@
 # -------------------------------------------------------------------------------------
 cmake_minimum_required(VERSION 3.18)
 
-add_library(PatriciaC STATIC cpatricia_set.c cpatricia_map.c)
+add_library(PatriciaC STATIC cpatricia_set.c cpatricia_map.c vmbumppool.c)
+if(VMARENA_USE_MADVISE)
+    target_compile_definitions(PatriciaC PRIVATE VMEMARENA_USE_MADVISE=1)
+endif()

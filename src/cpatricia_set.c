@@ -245,7 +245,7 @@ static size_t
 bswapz(
     size_t v)
 {
-#if (defined(__GNUC__) || defined(_clang))
+#if (defined(__GNUC__) || defined(__clang__))
     switch (sizeof(size_t)) {
     case 2: return __builtin_bswap16((uint16_t)v);
     case 4: return __builtin_bswap32((uint32_t)v);
@@ -271,7 +271,7 @@ clzz(
     }
 
     // GCC and Clang have builtins. Other compilers might, too...  
-# if (defined(__GNUC__) || defined(__clang))
+# if (defined(__GNUC__) || defined(__clang__))
     if (sizeof(int) >= sizeof(size_t))
         return __builtin_clz((unsigned int)v) - EXCESS(int);
     if (sizeof(long int) >= sizeof(size_t))
